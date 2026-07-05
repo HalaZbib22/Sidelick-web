@@ -1,0 +1,181 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Warm, accessible palette (WCAG AA verified). HSL channels so Tailwind
+     opacity modifiers (e.g. ring-primary/40) work. */
+  --background: 27 53% 97%;        /* #FBF6F2 cream page */
+  --surface: 0 0% 100%;            /* #FFFFFF cards */
+  --foreground: 21 37% 12%;        /* #2B1C14 ink (15:1) */
+  --muted: 28 38% 92%;             /* #F3EBE4 */
+  --muted-foreground: 23 12% 43%;  /* #7A6A60 */
+  --border: 26 30% 89%;            /* #ECE3DC */
+
+  --primary: 16 76% 43%;           /* #C2461A coral 600 — buttons */
+  --primary-foreground: 0 0% 100%;
+  --accent: 17 75% 53%;            /* #E15F2C coral 500 — highlights */
+  --accent-foreground: 0 0% 100%;
+  --link: 17 77% 34%;              /* #9B3A14 coral 700 — text links */
+
+  --trust: 165 82% 24%;            /* #0B6E55 teal — trust/verified */
+  --trust-foreground: 0 0% 100%;
+  --trust-subtle: 161 42% 93%;     /* #E4F4EF badge bg */
+  --trust-strong: 164 82% 17%;     /* #08503D badge text */
+
+  --accent-subtle: 19 100% 92%;    /* #FFE2D5 soft coral wash */
+  --danger: 4 76% 40%;             /* #B42318 */
+  --warning: 26 90% 37%;           /* #B45309 */
+
+  /* shadcn-compatible aliases (map to our palette) */
+  --card: 0 0% 100%;
+  --card-foreground: 21 37% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 21 37% 12%;
+  --secondary: 28 38% 92%;
+  --secondary-foreground: 21 37% 12%;
+  --input: 26 30% 89%;
+  --destructive: 4 76% 40%;
+  --destructive-foreground: 0 0% 100%;
+
+  --ring: 17 75% 53%;
+}
+
+.dark {
+  /* Warm-dark variant of the brand palette (WCAG AA verified). */
+  --background: 22 26% 8%;         /* #1B1410 warm near-black */
+  --surface: 24 26% 11%;           /* #241B15 cards */
+  --foreground: 28 46% 93%;        /* #F5ECE4 warm off-white */
+  --muted: 25 28% 14%;             /* #2C2119 */
+  --muted-foreground: 26 15% 67%;  /* #B7A99E */
+  --border: 25 23% 18%;            /* #3A2D24 */
+
+  --primary: 16 76% 43%;           /* #C2461A — white text still 5:1 */
+  --primary-foreground: 0 0% 100%;
+  --accent: 17 75% 53%;            /* #E15F2C */
+  --accent-foreground: 0 0% 100%;
+  --accent-subtle: 17 43% 16%;     /* #3A2117 */
+  --link: 15 80% 71%;              /* #F0997B light coral */
+
+  --trust: 161 69% 37%;            /* #1D9E75 */
+  --trust-foreground: 0 0% 100%;
+  --trust-subtle: 165 53% 15%;     /* #123A30 */
+  --trust-strong: 161 58% 64%;     /* #6FD9B8 light teal */
+
+  --danger: 3 73% 63%;             /* #E5605A */
+  --warning: 31 73% 55%;           /* #E0913A */
+
+  /* shadcn aliases (dark) */
+  --card: 24 26% 11%;
+  --card-foreground: 28 46% 93%;
+  --popover: 24 26% 11%;
+  --popover-foreground: 28 46% 93%;
+  --secondary: 25 28% 14%;
+  --secondary-foreground: 28 46% 93%;
+  --input: 25 23% 18%;
+  --destructive: 3 73% 63%;
+  --destructive-foreground: 0 0% 100%;
+
+  --ring: 17 75% 53%;
+
+  color-scheme: dark;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes slk-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slk-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.slk-rise { animation: slk-rise 0.6s ease both; }
+.slk-float { animation: slk-float 4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slk-rise, .slk-float { animation: none; }
+  /* Quiet the loading shimmer for motion-sensitive users; the muted block stays. */
+  .animate-pulse { animation: none; }
+}
+
+/* Hover-lift for buttons and CTA links (skips touch + reduce-motion). */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .lift {
+    transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+  }
+  .lift:not(:disabled):hover {
+    transform: translateY(-2px);
+  }
+}
+
+/* Scroll-snap testimonial rail: hide the scrollbar, smooth-scroll when allowed. */
+.slk-snap-rail {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.slk-snap-rail::-webkit-scrollbar {
+  display: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .slk-snap-rail {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Scroll-wheel picker columns: hide the scrollbar, keep snapping crisp. */
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Phone field (react-phone-number-input) themed to match our inputs. */
+.slk-phone {
+  display: flex;
+  align-items: center;
+  height: 2.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.875rem;
+  background: hsl(var(--surface));
+  padding: 0 0.75rem;
+  transition: box-shadow 0.15s ease;
+}
+.slk-phone:focus-within {
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.4);
+}
+.slk-phone.slk-phone-error {
+  border-color: hsl(var(--danger));
+}
+.slk-phone .PhoneInput {
+  width: 100%;
+}
+.slk-phone .PhoneInputInput {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 0.875rem;
+  color: hsl(var(--foreground));
+}
+.slk-phone .PhoneInputInput::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+.slk-phone .PhoneInputCountrySelect {
+  color: hsl(var(--foreground));
+}
+.slk-phone .PhoneInputCountryIcon {
+  border-radius: 2px;
+  overflow: hidden;
+}

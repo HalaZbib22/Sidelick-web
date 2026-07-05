@@ -1,0 +1,13 @@
+{
+  "name": "sidelick-db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sidelick database migrations",
+  "scripts": {
+    "migrate": "node migrate.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

@@ -1,0 +1,161 @@
+# Sidelick — First-time setup (macOS)
+
+A step-by-step guide to running the app on your Mac. No prior dev experience needed — just follow in order. Anything in a grey box is a command you paste into the **Terminal**.
+
+> The whole project already lives in this folder. You don't add or move any files — you just install two free tools, then start the app.
+
+---
+
+## What you're installing and why
+
+- **Node.js** — runs the website and the API (the code is written for it).
+- **PostgreSQL** — the database that stores users, pets, bookings, etc.
+- **VS Code extensions** — make the code easier to read/edit (optional but nice).
+
+---
+
+## Step 1 — Install Node.js
+
+1. Go to <https://nodejs.org>.
+2. Download the **LTS** version (the big green button) and run the installer.
+3. Verify it worked — open **Terminal** (Cmd+Space → type "Terminal") and run:
+
+```bash
+node -v
+```
+
+You should see something like `v20.x` or higher.
+
+---
+
+## Step 2 — Install PostgreSQL
+
+Easiest option for Mac: **Postgres.app**.
+
+1. Go to <https://postgresapp.com>, download, drag to Applications, open it.
+2. Click **Initialize** to start a local server.
+3. (Recommended) Add its tools to your Terminal so commands like `createdb` work:
+
+```bash
+sudo mkdir -p /etc/paths.d && echo /Applications/Postgres.app/Contents/Versions/latest/bin | sudo tee /etc/paths.d/postgresapp
+```
+
+4. **Close and reopen Terminal**, then check:
+
+```bash
+psql --version
+```
+
+With Postgres.app, your database username is your Mac username and there's **no password**.
+
+---
+
+## Step 3 — Open the project in VS Code
+
+1. Install VS Code from <https://code.visualstudio.com> if you don't have it.
+2. VS Code → **File → Open Folder** → choose this `Sidelick` folder (the top one, not a subfolder).
+3. VS Code will pop up "This workspace has extension recommendations" → click **Install All**. (These come from the `.vscode` folder I added.)
+
+> You may see red squiggles saying modules are missing. That's normal until Step 5 installs the libraries.
+
+---
+
+## Step 4 — Create the database
+
+In VS Code, open a terminal (**Terminal → New Terminal**) and run:
+
+```bash
+createdb sidelick
+```
+
+If `createdb` isn't found, redo Step 2.3 (the PATH line) and reopen the terminal.
+
+---
+
+## Step 5 — Set up and run each part
+
+The project has three parts: `db`, `backend`, `frontend`. Each needs its libraries installed once (`npm install`). Use **three terminal tabs** (the `+` icon in the terminal panel).
+
+First, find your Mac username (you'll paste it into the database address):
+
+```bash
+whoami
+```
+
+### 5a. Database migrations (terminal 1)
+
+```bash
+cd db
+npm install
+DATABASE_URL=postgres://YOUR_USERNAME@localhost:5432/sidelick npm run migrate
+```
+
+Replace `YOUR_USERNAME` with what `whoami` printed. You should see "migration(s) applied."
+
+### 5b. Backend / API (terminal 2)
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+```
+
+Now open `backend/.env` in VS Code and fill in two lines:
+
+- `DATABASE_URL=postgres://YOUR_USERNAME@localhost:5432/sidelick`
+- `JWT_SECRET=` → generate a random value by running `openssl rand -hex 32` and pasting the result.
+
+Then start it:
+
+```bash
+npm run dev
+```
+
+Leave it running. Test it by visiting <http://localhost:4000/api/health> — you should see a small JSON message saying the database is connected.
+
+### 5c. Frontend / website (terminal 3)
+
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Leave it running too.
+
+---
+
+## Step 6 — Open the site
+
+Go to <http://localhost:3000>. You'll see the Sidelick landing page. Try **Create account** → it really creates a user in your database, signs you in, and lands on the dashboard. Add a pet from there to see the full flow.
+
+---
+
+## Stopping and restarting
+
+- To stop a running part: click its terminal and press **Ctrl+C**.
+- To start again later: you only need `npm run dev` (in `backend` and `frontend`) — you don't reinstall or re-migrate unless something changed.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "command not found: createdb / psql" | Postgres.app PATH not set — redo Step 2.3, reopen Terminal. |
+| Backend says database error | Check `DATABASE_URL` in `backend/.env` uses your real username; make sure Postgres.app is running. |
+| "Port 3000 (or 4000) already in use" | Something's already running on it — close other terminals, or restart your Mac. |
+| Red squiggles in VS Code | Run `npm install` in that folder (`frontend` or `backend`). |
+| Frontend loads but actions fail | Make sure the backend (terminal 2) is running and `frontend/.env.local` points to `http://localhost:4000`. |
+
+---
+
+## What's in the folder (reference)
+
+- **Planning docs** (`*.md`, `schema.sql`) — the product/design plan.
+- **`db/`** — database schema + migration runner.
+- **`backend/`** — the API server (Express + PostgreSQL).
+- **`frontend/`** — the website (Next.js). Screens live in `frontend/app/`, reusable pieces in `frontend/components/`.
+
+You never need to edit `node_modules/` — it's auto-generated by `npm install` and safe to delete/recreate.
