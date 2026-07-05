@@ -78,3 +78,5 @@ start().catch((err) => {
 });
 
 // smoke-test: verify Claude AI review runs
+
+// retrigger AI review
