@@ -30,6 +30,8 @@ const ASSETS_DIR = resolve(BACKEND_DIR, "seed_assets");
 const UPLOAD_DIR = resolve(BACKEND_DIR, "private_uploads");
 
 const SEED_DOMAIN = "@sidelick.test";
+// Dev-seed only: shared password for locally seeded demo accounts (@sidelick.test).
+// NOT a production credential — never used by real users. Safe to be public.
 const PASSWORD = "Password123!";
 
 const { DATABASE_URL } = process.env;
