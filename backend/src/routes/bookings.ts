@@ -162,6 +162,12 @@ async function insertOccurrence(
 // Same-day bookings need enough lead time for the walker to accept + arrive.
 const MIN_LEAD_MINUTES = 30;
 
+// A walk can't be started too far ahead of its scheduled time (walkers shouldn't
+// clock in early), nor after the start window has clearly lapsed (past that it's a
+// no-show and the owner can cancel for a refund via the existing flow).
+const START_EARLY_GRACE_MINUTES = 15;
+const START_LATE_GRACE_MINUTES = 30;
+
 /** Returns an error string if the requested start is in the past / too soon, else null. */
 function startTimeError(date: string, startTime: string): string | null {
   const start = new Date(`${date}T${startTime}:00`);
@@ -587,6 +593,22 @@ bookingsRouter.post("/:id/start", requireVerifiedWalker, photoUpload.single("pho
   // aren't configured (dev / pre-launch), so the flow still works end to end.
   if (isPaymentsConfigured() && !(await isBookingPaid(req.params.id))) {
     return conflict(res, "Waiting on the customer's payment — the walk can start once it's held.");
+  }
+  // Start-window gate: not too early (walkers can clock in up to 15 min ahead), and
+  // not after the window has clearly lapsed (30 min past = treat as a no-show).
+  const scheduledMs = new Date(a.booking!.start_at).getTime();
+  const nowMs = Date.now();
+  if (nowMs < scheduledMs - START_EARLY_GRACE_MINUTES * 60_000) {
+    return conflict(
+      res,
+      `It's too early to start this walk. You can check in from ${START_EARLY_GRACE_MINUTES} minutes before the scheduled time.`
+    );
+  }
+  if (nowMs > scheduledMs + START_LATE_GRACE_MINUTES * 60_000) {
+    return conflict(
+      res,
+      "The start window for this booking has passed. Ask the owner to cancel it for a refund so it can be rebooked."
+    );
   }
   await storeCheckpoint(req.params.id, "start", privateRef("walk", req.file.filename));
   await query(
