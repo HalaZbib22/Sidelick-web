@@ -76,3 +76,7 @@ start().catch((err) => {
   console.error("[startup] failed to start:", err);
   process.exit(1);
 });
+
+// smoke-test: verify Claude AI review runs
+
+// retrigger AI review

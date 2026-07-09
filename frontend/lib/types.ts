@@ -148,6 +148,16 @@ export type DisputeReason =
   | "pet_welfare"
   | "other";
 
+/** Why a walker declined a request (internal — owners never see it verbatim). */
+export type DeclineReason =
+  | "unavailable"
+  | "too_far"
+  | "dog_fit"
+  | "too_many_dogs"
+  | "special_needs"
+  | "uncomfortable"
+  | "other";
+
 /** A customer-raised problem with a booking. Null when none has been opened. */
 export interface Dispute {
   id: string;

@@ -161,6 +161,13 @@ CREATE TABLE bookings (
     -- still-'requested' rows past this to 'expired'.
     respond_by          TIMESTAMPTZ,
 
+    -- Why the walker declined (internal only — owner sees a neutral message).
+    -- Structured code drives analytics/triage; note is the walker's own words.
+    decline_reason      TEXT CHECK (decline_reason IN (
+                            'unavailable', 'too_far', 'dog_fit', 'too_many_dogs',
+                            'special_needs', 'uncomfortable', 'other')),
+    decline_note        TEXT,
+
     -- Overall span (derived from segments; stored for range queries)
     start_at            TIMESTAMPTZ,
     end_at              TIMESTAMPTZ,

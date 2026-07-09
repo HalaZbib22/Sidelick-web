@@ -13,6 +13,7 @@ import { WalkPhotoCapture } from "../../../components/bookings/WalkPhotoCapture"
 import { WalkPhotos } from "../../../components/bookings/WalkPhotos";
 import { BookingReviewSection } from "../../../components/reviews/BookingReviewSection";
 import { DisputeSection } from "../../../components/bookings/DisputeSection";
+import { DeclineDialog } from "../../../components/bookings/DeclineDialog";
 import { PaymentSection } from "../../../components/payments/PaymentSection";
 import { useBooking, useBookingAction, useWalkPhotoAction } from "../../../hooks/useBookings";
 import { routes } from "../../../lib/paths";
@@ -36,8 +37,9 @@ function BookingInner() {
   const midPhoto = useWalkPhotoAction(id, "photo");
   const completeWalk = useWalkPhotoAction(id, "complete");
   const [capture, setCapture] = useState<Capture>(null);
+  const [declining, setDeclining] = useState(false);
 
-  const run = (a: "accept" | "decline" | "cancel", label: string) =>
+  const run = (a: "accept" | "cancel", label: string) =>
     action.mutate(a, { onSuccess: () => toast.success(label), onError: (e) => toast.error(getApiErrorMessage(e)) });
 
   const submitPhoto = (mutation: typeof startWalk, file: File, label: string) =>
@@ -174,7 +176,7 @@ function BookingInner() {
         {isWalker && b.status === "requested" && (
           <>
             <Button onClick={() => run("accept", "Booking accepted")} loading={pending}>Accept</Button>
-            <Button variant="outline" onClick={() => run("decline", "Booking declined")} disabled={pending}>Decline</Button>
+            <Button variant="outline" onClick={() => setDeclining(true)} disabled={pending}>Decline</Button>
           </>
         )}
         {isWalker && b.status === "accepted" && (
@@ -229,6 +231,8 @@ function BookingInner() {
       {b.role === "customer" && (b.status === "in_progress" || b.status === "completed") && (
         <DisputeSection bookingId={id} />
       )}
+
+      <DeclineDialog bookingId={id} open={declining} onClose={() => setDeclining(false)} />
     </main>
   );
 }

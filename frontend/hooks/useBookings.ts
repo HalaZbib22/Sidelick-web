@@ -3,7 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { api } from "../lib/paths";
-import type { BookingSummary, BookingDetail, WalkPhoto, Dispute, DisputeReason } from "../lib/types";
+import type {
+  BookingSummary,
+  BookingDetail,
+  WalkPhoto,
+  Dispute,
+  DisputeReason,
+  DeclineReason,
+} from "../lib/types";
 
 export function useBookings() {
   return useQuery({
@@ -26,6 +33,26 @@ export function useBookingAction(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (action: Action) => apiFetch(api.bookingAction(id, action), { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["booking", id] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+    },
+  });
+}
+
+/**
+ * Walker declines a request with a structured reason (+ optional note). Separate
+ * from useBookingAction because decline now carries a body. The reason is stored
+ * for our analytics/triage; the owner only gets a neutral "not available" note.
+ */
+export function useDeclineBooking(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { reasonCode: DeclineReason; note?: string }) =>
+      apiFetch(api.bookingAction(id, "decline"), {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["booking", id] });
       qc.invalidateQueries({ queryKey: ["bookings"] });

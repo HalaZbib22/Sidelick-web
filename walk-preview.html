@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Walk progress preview</title>
+<style>
+  :root{
+    --surface:#fff; --foreground:#2B1C14; --muted:#F3EBE4; --muted-fg:#7A6A60;
+    --border:#ECE3DC; --primary:#C2461A; --trust:#08503D;
+  }
+  body{margin:0;background:#FBF7F3;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--foreground);padding:28px;}
+  h1{font-size:15px;font-weight:600;color:var(--muted-fg);margin:0 0 16px;letter-spacing:.01em}
+  .wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  .card{border:1px solid var(--border);background:var(--surface);border-radius:16px;padding:20px;overflow:hidden}
+  .row{display:flex;align-items:flex-end;justify-content:space-between}
+  .status{display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:99px;background:var(--primary)}
+  .dot.over{background:var(--trust)}
+  .label{font-size:14px;font-weight:500;margin:0}
+  .count{font-variant-numeric:tabular-nums;font-size:30px;font-weight:600;letter-spacing:-.02em}
+  .count.over{color:var(--trust)}
+  .path{position:relative;height:92px;margin-top:16px}
+  .track{position:absolute;left:4px;right:4px;bottom:16px;height:10px;border-radius:99px;background:var(--muted)}
+  .fill{height:100%;border-radius:99px;background:var(--primary)}
+  .fill.over{background:var(--trust)}
+  .bone{position:absolute;bottom:7px;right:0;color:rgba(122,106,96,.4)}
+  .bone.over{color:var(--trust)}
+  .dog{position:absolute;bottom:13px;transform:translateX(-50%)}
+  .sub{font-size:12px;color:var(--muted-fg);margin:6px 0 0}
+
+  @keyframes wc-leg-near{0%,100%{transform:rotate(20deg)}50%{transform:rotate(-20deg)}}
+  @keyframes wc-leg-far{0%,100%{transform:rotate(-20deg)}50%{transform:rotate(20deg)}}
+  @keyframes wc-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+  @keyframes wc-tail{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(14deg)}}
+  @keyframes wc-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  @keyframes wc-walk{from{left:7%}to{left:93%}}
+  .leg-near{animation:wc-leg-near .5s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 0%}
+  .leg-far{animation:wc-leg-far .5s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 0%}
+  .bob{animation:wc-bob .5s ease-in-out infinite}
+  .tail{animation:wc-tail .6s ease-in-out infinite;transform-box:fill-box;transform-origin:100% 100%}
+  .pulse{animation:wc-pulse 1.4s ease-in-out infinite}
+  .demo .dog{animation:wc-walk 14s linear infinite}
+  .demo .fill{animation:wc-walk 14s linear infinite;position:relative}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sidelick · walk-in-progress card — live preview (three states)</h1>
+  <div id="root"></div>
+</div>
+<script>
+const DOG = (walking, wag) => `
+<svg viewBox="0 0 80 58" width="74" height="54" class="${walking?'bob':''}" style="filter:drop-shadow(0 1px 1px rgba(0,0,0,.12))">
+  <g class="${wag?'tail':''}"><path d="M18 30 C 8 26 4 18 8 12 C 12 16 14 22 20 26 Z" fill="#A9713F"/></g>
+  <rect x="24" y="36" width="6" height="17" rx="3" fill="#B98B5C" class="${walking?'leg-far':''}"/>
+  <rect x="47" y="36" width="6" height="17" rx="3" fill="#B98B5C" class="${walking?'leg-near':''}"/>
+  <ellipse cx="38" cy="30" rx="25" ry="15" fill="#C68B59"/>
+  <circle cx="22" cy="31" r="14" fill="#C68B59"/>
+  <circle cx="60" cy="23" r="13" fill="#C68B59"/>
+  <path d="M55 12 C 49 12 47 20 51 27 C 56 24 58 18 58 13 Z" fill="#A9713F"/>
+  <rect x="29" y="38" width="6.5" height="16" rx="3.2" fill="#A9713F" class="${walking?'leg-near':''}"/>
+  <rect x="52" y="38" width="6.5" height="16" rx="3.2" fill="#A9713F" class="${walking?'leg-far':''}"/>
+  <path d="M50 20 C 52 27 54 30 55 34" stroke="#C2461A" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+  <circle cx="54.5" cy="34" r="2" fill="#C2461A"/>
+  <path d="M66 21 C 76 20 79 24 78 28 C 73 31 68 30 65 27 Z" fill="#E4BE93"/>
+  <circle cx="77" cy="25" r="2.4" fill="#3B2F2A"/>
+  <circle cx="62" cy="20" r="2" fill="#3B2F2A"/>
+  <circle cx="62.7" cy="19.3" r="0.7" fill="#fff"/>
+</svg>`;
+const BONE = over => `<svg viewBox="0 0 24 20" width="20" height="20" fill="currentColor"><circle cx="5" cy="7" r="3"/><circle cx="5" cy="13" r="3"/><circle cx="19" cy="7" r="3"/><circle cx="19" cy="13" r="3"/><rect x="5" y="8" width="14" height="4"/></svg>`;
+
+function card({demo, pct, count, over, sub, label}){
+  const walking = !over && !demo; // demo drives its own keyframe loop
+  return `<div class="card ${demo?'demo':''}">
+    <div class="row">
+      <div class="status"><span class="dot ${over?'over':''} ${(!over)?'pulse':''}"></span><p class="label">${label}</p></div>
+      <span class="count ${over?'over':''}">${over?'+':''}${count}</span>
+    </div>
+    <div class="path">
+      <div class="track"><div class="fill ${over?'over':''}" style="width:${over?100:pct}%"></div></div>
+      <div class="bone ${over?'over':''}">${BONE(over)}</div>
+      <div class="dog" style="left:${pct}%">${DOG(demo||walking, !over || demo)}</div>
+    </div>
+    <p class="sub">${sub}</p>
+  </div>`;
+}
+document.getElementById('root').innerHTML = [
+  card({demo:true, pct:7, count:'22:14', over:false, label:'Walk in progress', sub:'30-min booking · started 4:02 PM · ends ~4:32 PM  (animated demo — dog loops across)'}),
+  card({demo:false, pct:75, count:'07:30', over:false, label:'Walk in progress', sub:'30-min booking · started 4:02 PM · ends ~4:32 PM  (static, 75%)'}),
+  card({demo:false, pct:93, count:'03:12', over:true, label:'Over the booked time', sub:'Running 03:12 past the 30-min booking · started 4:02 PM  (overtime state)'}),
+].join('');
+</script>
+</body>
+</html>
