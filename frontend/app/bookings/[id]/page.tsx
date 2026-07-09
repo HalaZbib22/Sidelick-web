@@ -27,6 +27,24 @@ const time = (dt: string) =>
   new Date(dt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 const durationMins = (a: string, b: string) => Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
 
+// Keep in sync with the backend start-window gate (bookings.ts).
+const START_EARLY_GRACE_MIN = 15;
+const START_LATE_GRACE_MIN = 30;
+
+type StartWindow = { canStart: boolean; hint: string | null };
+function startWindow(startAt: string): StartWindow {
+  const scheduled = new Date(startAt).getTime();
+  const now = Date.now();
+  if (now < scheduled - START_EARLY_GRACE_MIN * 60_000) {
+    const opensAt = new Date(scheduled - START_EARLY_GRACE_MIN * 60_000);
+    return { canStart: false, hint: `You can start at ${time(opensAt.toISOString())}` };
+  }
+  if (now > scheduled + START_LATE_GRACE_MIN * 60_000) {
+    return { canStart: false, hint: "The start window has passed — ask the owner to cancel for a refund." };
+  }
+  return { canStart: true, hint: null };
+}
+
 type Capture = "start" | "mid" | "complete" | null;
 
 function BookingInner() {
@@ -179,9 +197,15 @@ function BookingInner() {
             <Button variant="outline" onClick={() => setDeclining(true)} disabled={pending}>Decline</Button>
           </>
         )}
-        {isWalker && b.status === "accepted" && (
-          <Button onClick={() => setCapture("start")} disabled={pending}>Start walk</Button>
-        )}
+        {isWalker && b.status === "accepted" && (() => {
+          const win = startWindow(b.startAt);
+          return (
+            <div className="flex flex-col gap-1">
+              <Button onClick={() => setCapture("start")} disabled={pending || !win.canStart}>Start walk</Button>
+              {win.hint && <span className="text-xs text-muted-foreground">{win.hint}</span>}
+            </div>
+          );
+        })()}
         {isWalker && b.status === "in_progress" && (
           <>
             <Button onClick={() => setCapture("complete")} disabled={pending}>Mark complete</Button>
