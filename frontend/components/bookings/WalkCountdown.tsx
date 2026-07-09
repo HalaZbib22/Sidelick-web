@@ -2,12 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import dynamic from "next/dynamic";
+
+import dogWalk from "../../public/lottie/dog-walk.json";
+import dogSit from "../../public/lottie/dog-sit.json";
+
+// lottie-web touches window/document, so load it client-side only.
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 /**
- * Live countdown ring shown while a walk/sit is in_progress.
+ * Live walk/sit progress shown while a booking is in_progress.
  * Target = actualStartAt + the booked duration (scheduled endAt - startAt).
- * Counts down MM:SS, fills an SVG progress ring, and flips to an "over time"
- * state once the booked duration elapses (the walk can run long — that's fine).
+ * A little dog trots along the path as time elapses; when the booked duration
+ * is up it reaches the finish line and sits proudly by the bone. Honors
+ * reduced-motion (the dog is shown as a still frame).
  */
 export function WalkCountdown({
   actualStartAt,
@@ -41,64 +49,130 @@ export function WalkCountdown({
   // Fraction of the booked duration completed (clamped 0..1).
   const elapsedFrac = Math.min(1, Math.max(0, (now - startMs) / bookedMs));
 
-  const R = 52;
-  const C = 2 * Math.PI * R;
-  const dash = C * (overtime ? 1 : elapsedFrac);
+  const animate = !reduce;
+  // Dog centre travels between these two % marks so it never clips the edges.
+  const pct = overtime ? 90 : 7 + elapsedFrac * 82;
+  const fillPct = overtime ? 100 : pct;
+  // Pawprints already passed by the dog.
+  const prints = [20, 36, 52, 68].filter((p) => p < pct - 4);
 
   return (
-    <div className="mt-5 flex items-center gap-5 rounded-2xl border border-border bg-surface p-5">
-      <div className="relative h-32 w-32 shrink-0">
-        <svg viewBox="0 0 120 120" className="h-32 w-32 -rotate-90">
-          <circle
-            cx="60"
-            cy="60"
-            r={R}
-            fill="none"
-            strokeWidth="8"
-            className="stroke-muted"
+    <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-surface p-5">
+      <style>{keyframes}</style>
+
+      <div className="flex items-end justify-between">
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${
+              overtime ? "bg-trust-strong" : "bg-primary"
+            } ${animate && !overtime ? "wc-pulse" : ""}`}
+            aria-hidden="true"
           />
-          <motion.circle
-            cx="60"
-            cy="60"
-            r={R}
-            fill="none"
-            strokeWidth="8"
-            strokeLinecap="round"
-            className={overtime ? "stroke-trust-strong" : "stroke-primary"}
-            strokeDasharray={C}
-            initial={false}
-            animate={{ strokeDashoffset: C - dash }}
-            transition={reduce ? { duration: 0 } : { duration: 0.6, ease: "easeOut" }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="tabular-nums text-2xl font-semibold tracking-tight">
-            {mm}:{ss}
-          </span>
-          {!reduce && !overtime && (
-            <motion.span
-              className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary"
-              animate={{ opacity: [1, 0.2, 1] }}
-              transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
-              aria-hidden="true"
-            />
-          )}
+          <p className="text-sm font-medium">
+            {overtime ? "All done — good walk!" : "Walk in progress"}
+          </p>
         </div>
+        <span
+          className={`tabular-nums text-3xl font-semibold tracking-tight ${
+            overtime ? "text-trust-strong" : "text-foreground"
+          }`}
+        >
+          {overtime && "+"}
+          {mm}:{ss}
+        </span>
       </div>
 
-      <div>
-        <p className="text-sm font-medium">
-          {overtime ? "Over the booked time" : "Walk in progress"}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {overtime
-            ? `Running ${mm}:${ss} past the ${Math.round(totalSec / 60)}-min booking.`
-            : `${mm}:${ss} left of the ${Math.round(totalSec / 60)}-min booking.`}
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Started {fmtTime(startMs)} · ends ~{fmtTime(endMs)}
-        </p>
+      {/* The path */}
+      <div className="relative mt-4 h-[96px]">
+        {/* Track + filled trail */}
+        <div className="absolute inset-x-1 bottom-4 h-2.5 rounded-full bg-muted">
+          <motion.div
+            className={`h-full rounded-full ${
+              overtime ? "bg-trust-strong" : "bg-primary"
+            }`}
+            initial={false}
+            animate={{ width: `${fillPct}%` }}
+            transition={
+              reduce ? { duration: 0 } : { duration: 1, ease: "linear" }
+            }
+          />
+        </div>
+
+        {/* Pawprints left behind on the trail */}
+        {prints.map((p) => (
+          <svg
+            key={p}
+            viewBox="0 0 12 10"
+            className="absolute bottom-[9px] h-2 w-2.5 text-primary/30"
+            style={{ left: `${p}%`, transform: "translateX(-50%)" }}
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <ellipse cx="6" cy="7" rx="2.6" ry="2" />
+            <circle cx="2.5" cy="3" r="1.2" />
+            <circle cx="6" cy="2" r="1.2" />
+            <circle cx="9.5" cy="3" r="1.2" />
+          </svg>
+        ))}
+
+        {/* Bone at the finish — sits on the track, just inside the end */}
+        <div className="absolute bottom-[11px] right-1">
+          <svg
+            viewBox="0 0 24 20"
+            className={`h-5 w-5 ${
+              overtime ? "text-primary/60" : "text-muted-foreground/40"
+            }`}
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <circle cx="5" cy="7" r="3" />
+            <circle cx="5" cy="13" r="3" />
+            <circle cx="19" cy="7" r="3" />
+            <circle cx="19" cy="13" r="3" />
+            <rect x="5" y="8" width="14" height="4" />
+          </svg>
+        </div>
+
+        {/* The dog — walks the trail, then sits at the finish line */}
+        <motion.div
+          className="absolute bottom-[9px]"
+          style={{ transform: "translateX(-50%)" }}
+          initial={false}
+          animate={{ left: `${pct}%` }}
+          transition={
+            reduce ? { duration: 0 } : { duration: 1, ease: "linear" }
+          }
+          aria-hidden="true"
+        >
+          {overtime ? (
+            <Lottie
+              animationData={dogSit}
+              loop={animate}
+              autoplay={animate}
+              className="h-[62px] w-[62px]"
+              rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
+            />
+          ) : (
+            <Lottie
+              animationData={dogWalk}
+              loop={animate}
+              autoplay={animate}
+              className="h-[58px] w-[72px]"
+              rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
+            />
+          )}
+        </motion.div>
       </div>
+
+      <p className="mt-1 text-xs text-muted-foreground">
+        {overtime
+          ? `Ran ${mm}:${ss} past the ${Math.round(
+              totalSec / 60
+            )}-min booking · started ${fmtTime(startMs)}`
+          : `${Math.round(totalSec / 60)}-min booking · started ${fmtTime(
+              startMs
+            )} · ends ~${fmtTime(endMs)}`}
+      </p>
     </div>
   );
 }
@@ -109,3 +183,8 @@ function fmtTime(ms: number) {
     minute: "2-digit",
   });
 }
+
+const keyframes = `
+@keyframes wc-pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+.wc-pulse { animation: wc-pulse 1.4s ease-in-out infinite }
+`;

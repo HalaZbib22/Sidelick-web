@@ -517,10 +517,33 @@ bookingsRouter.post("/:id/accept", requireVerifiedWalker, async (req, res) => {
   });
   return ok(res, { status: "accepted" }, "Booking accepted");
 });
+// Why a walker declined — structured for analytics/triage. Kept internal; the
+// owner only ever sees a neutral "not available" message. Codes mirror the
+// bookings.decline_reason CHECK constraint (migration 0014).
+const declineSchema = z.object({
+  reasonCode: z.enum([
+    "unavailable",
+    "too_far",
+    "dog_fit",
+    "too_many_dogs",
+    "special_needs",
+    "uncomfortable",
+    "other",
+  ]),
+  note: z.string().max(1000).optional(),
+});
+
 bookingsRouter.post("/:id/decline", async (req, res) => {
+  const parsed = declineSchema.safeParse(req.body ?? {});
+  if (!parsed.success)
+    return unprocessable(res, "Please choose a reason for declining.", parsed.error.flatten());
   const r = await transition(req.params.id, req.user!.userId, "walker", ["requested"], "declined");
   const err = handleTransition(res, r);
   if (err) return err;
+  await query(
+    `UPDATE bookings SET decline_reason = $1, decline_note = $2, updated_at = now() WHERE id = $3`,
+    [parsed.data.reasonCode, parsed.data.note?.trim() || null, req.params.id]
+  );
   // A declined request is normally pre-payment, but release any hold defensively.
   await voidOrRefundForBooking(req.params.id, "booking_declined");
   await notify({
