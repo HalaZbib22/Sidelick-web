@@ -57,15 +57,6 @@ export function WalkCountdown({
   // Pawprints already passed by the dog.
   const prints = [20, 36, 52, 68].filter((p) => p < pct - 4);
 
-  // When the walk is done, halt the dog on a standing frame instead of
-  // trotting in place; resume the trot if it somehow flips back.
-  useEffect(() => {
-    const dog = lottieRef.current;
-    if (!dog) return;
-    if (overtime) dog.goToAndStop(0, true);
-    else if (animate) dog.play();
-  }, [overtime, animate]);
-
   return (
     <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-surface p-5">
       <style>{keyframes}</style>
@@ -125,52 +116,69 @@ export function WalkCountdown({
           </svg>
         ))}
 
-        {/* Bone — the goal marker at the finish while walking; once the dog
-            arrives it tucks under the dog's paws so it stands over its treat. */}
-        <div
-          className="absolute bottom-[11px]"
-          style={
-            overtime
-              ? { left: `${pct}%`, transform: "translateX(-50%)" }
-              : { right: "0.25rem" }
-          }
-        >
-          <svg
-            viewBox="0 0 24 20"
-            className={`h-5 w-5 ${
-              overtime ? "text-primary/60" : "text-muted-foreground/40"
-            }`}
-            fill="currentColor"
+        {/* Bone — the goal marker waiting at the finish while the walk runs. */}
+        {!overtime && (
+          <div className="absolute bottom-[11px]" style={{ right: "0.25rem" }}>
+            <svg
+              viewBox="0 0 24 20"
+              className="h-5 w-5 text-muted-foreground/40"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <circle cx="5" cy="7" r="3" />
+              <circle cx="5" cy="13" r="3" />
+              <circle cx="19" cy="7" r="3" />
+              <circle cx="19" cy="13" r="3" />
+              <rect x="5" y="8" width="14" height="4" />
+            </svg>
+          </div>
+        )}
+
+        {/* The dog trots the trail while the walk is running. */}
+        {!overtime && (
+          <motion.div
+            className="absolute bottom-[9px]"
+            style={{ transform: "translateX(-50%)" }}
+            initial={false}
+            animate={{ left: `${pct}%` }}
+            transition={
+              reduce ? { duration: 0 } : { duration: 1, ease: "linear" }
+            }
             aria-hidden="true"
           >
-            <circle cx="5" cy="7" r="3" />
-            <circle cx="5" cy="13" r="3" />
-            <circle cx="19" cy="7" r="3" />
-            <circle cx="19" cy="13" r="3" />
-            <rect x="5" y="8" width="14" height="4" />
-          </svg>
-        </div>
+            <Lottie
+              lottieRef={lottieRef}
+              animationData={dogWalk}
+              loop={animate}
+              autoplay={animate}
+              className="h-[58px] w-[72px]"
+              rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
+            />
+          </motion.div>
+        )}
 
-        {/* The dog — trots the trail, then stops over the bone at the finish */}
-        <motion.div
-          className="absolute bottom-[9px]"
-          style={{ transform: "translateX(-50%)" }}
-          initial={false}
-          animate={{ left: `${pct}%` }}
-          transition={
-            reduce ? { duration: 0 } : { duration: 1, ease: "linear" }
-          }
-          aria-hidden="true"
-        >
-          <Lottie
-            lottieRef={lottieRef}
-            animationData={dogWalk}
-            loop={animate && !overtime}
-            autoplay={animate && !overtime}
-            className="h-[58px] w-[72px]"
-            rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
-          />
-        </motion.div>
+        {/* Once the walk is done, a paw + checkmark marks the finish. */}
+        {overtime && (
+          <div className="absolute bottom-[4px] right-1" aria-hidden="true">
+            <div
+              className={`relative flex h-9 w-9 items-center justify-center rounded-full bg-trust-subtle ${
+                animate ? "wc-pop" : ""
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 20"
+                className="h-4 w-5 text-trust-strong"
+                fill="currentColor"
+              >
+                <ellipse cx="12" cy="14" rx="5" ry="4" />
+                <circle cx="4.5" cy="8" r="2.2" />
+                <circle cx="9.5" cy="4.5" r="2.2" />
+                <circle cx="14.5" cy="4.5" r="2.2" />
+                <circle cx="19.5" cy="8" r="2.2" />
+              </svg>
+            </div>
+          </div>
+        )}
       </div>
 
       <p className="mt-1 text-xs text-muted-foreground">
@@ -196,4 +204,10 @@ function fmtTime(ms: number) {
 const keyframes = `
 @keyframes wc-pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
 .wc-pulse { animation: wc-pulse 1.4s ease-in-out infinite }
+@keyframes wc-pop {
+  0% { transform: scale(0); opacity: 0 }
+  60% { transform: scale(1.15) }
+  100% { transform: scale(1); opacity: 1 }
+}
+.wc-pop { animation: wc-pop .5s ease-out both }
 `;
