@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import dynamic from "next/dynamic";
+import type { LottieRefCurrentProps } from "lottie-react";
 
 import dogWalk from "../../public/lottie/dog-walk.json";
-import dogSit from "../../public/lottie/dog-sit.json";
 
 // lottie-web touches window/document, so load it client-side only.
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
@@ -14,8 +14,8 @@ const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
  * Live walk/sit progress shown while a booking is in_progress.
  * Target = actualStartAt + the booked duration (scheduled endAt - startAt).
  * A little dog trots along the path as time elapses; when the booked duration
- * is up it reaches the finish line and sits proudly by the bone. Honors
- * reduced-motion (the dog is shown as a still frame).
+ * is up it reaches the bone at the finish line and stops walking — same dog,
+ * just standing still over its treat. Honors reduced-motion (still frame).
  */
 export function WalkCountdown({
   actualStartAt,
@@ -28,6 +28,7 @@ export function WalkCountdown({
 }) {
   const reduce = useReducedMotion();
   const [now, setNow] = useState(() => Date.now());
+  const lottieRef = useRef<LottieRefCurrentProps>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -55,6 +56,15 @@ export function WalkCountdown({
   const fillPct = overtime ? 100 : pct;
   // Pawprints already passed by the dog.
   const prints = [20, 36, 52, 68].filter((p) => p < pct - 4);
+
+  // When the walk is done, halt the dog on a standing frame instead of
+  // trotting in place; resume the trot if it somehow flips back.
+  useEffect(() => {
+    const dog = lottieRef.current;
+    if (!dog) return;
+    if (overtime) dog.goToAndStop(0, true);
+    else if (animate) dog.play();
+  }, [overtime, animate]);
 
   return (
     <div className="mt-5 overflow-hidden rounded-2xl border border-border bg-surface p-5">
@@ -115,8 +125,16 @@ export function WalkCountdown({
           </svg>
         ))}
 
-        {/* Bone at the finish — sits on the track, just inside the end */}
-        <div className="absolute bottom-[11px] right-1">
+        {/* Bone — the goal marker at the finish while walking; once the dog
+            arrives it tucks under the dog's paws so it stands over its treat. */}
+        <div
+          className="absolute bottom-[11px]"
+          style={
+            overtime
+              ? { left: `${pct}%`, transform: "translateX(-50%)" }
+              : { right: "0.25rem" }
+          }
+        >
           <svg
             viewBox="0 0 24 20"
             className={`h-5 w-5 ${
@@ -133,7 +151,7 @@ export function WalkCountdown({
           </svg>
         </div>
 
-        {/* The dog — walks the trail, then sits at the finish line */}
+        {/* The dog — trots the trail, then stops over the bone at the finish */}
         <motion.div
           className="absolute bottom-[9px]"
           style={{ transform: "translateX(-50%)" }}
@@ -144,23 +162,14 @@ export function WalkCountdown({
           }
           aria-hidden="true"
         >
-          {overtime ? (
-            <Lottie
-              animationData={dogSit}
-              loop={animate}
-              autoplay={animate}
-              className="h-[62px] w-[62px]"
-              rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
-            />
-          ) : (
-            <Lottie
-              animationData={dogWalk}
-              loop={animate}
-              autoplay={animate}
-              className="h-[58px] w-[72px]"
-              rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
-            />
-          )}
+          <Lottie
+            lottieRef={lottieRef}
+            animationData={dogWalk}
+            loop={animate && !overtime}
+            autoplay={animate && !overtime}
+            className="h-[58px] w-[72px]"
+            rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
+          />
         </motion.div>
       </div>
 
