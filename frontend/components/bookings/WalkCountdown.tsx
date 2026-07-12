@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import dynamic from "next/dynamic";
+import type { LottieRefCurrentProps } from "lottie-react";
 
 import dogWalk from "../../public/lottie/dog-walk.json";
-import dogSit from "../../public/lottie/dog-sit.json";
 
 // lottie-web touches window/document, so load it client-side only.
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
@@ -14,8 +14,8 @@ const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
  * Live walk/sit progress shown while a booking is in_progress.
  * Target = actualStartAt + the booked duration (scheduled endAt - startAt).
  * A little dog trots along the path as time elapses; when the booked duration
- * is up it reaches the finish line and sits proudly by the bone. Honors
- * reduced-motion (the dog is shown as a still frame).
+ * is up it reaches the bone at the finish line and stops walking — same dog,
+ * just standing still over its treat. Honors reduced-motion (still frame).
  */
 export function WalkCountdown({
   actualStartAt,
@@ -28,6 +28,7 @@ export function WalkCountdown({
 }) {
   const reduce = useReducedMotion();
   const [now, setNow] = useState(() => Date.now());
+  const lottieRef = useRef<LottieRefCurrentProps>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -115,53 +116,69 @@ export function WalkCountdown({
           </svg>
         ))}
 
-        {/* Bone at the finish — sits on the track, just inside the end */}
-        <div className="absolute bottom-[11px] right-1">
-          <svg
-            viewBox="0 0 24 20"
-            className={`h-5 w-5 ${
-              overtime ? "text-primary/60" : "text-muted-foreground/40"
-            }`}
-            fill="currentColor"
+        {/* Bone — the goal marker waiting at the finish while the walk runs. */}
+        {!overtime && (
+          <div className="absolute bottom-[11px]" style={{ right: "0.25rem" }}>
+            <svg
+              viewBox="0 0 24 20"
+              className="h-5 w-5 text-muted-foreground/40"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <circle cx="5" cy="7" r="3" />
+              <circle cx="5" cy="13" r="3" />
+              <circle cx="19" cy="7" r="3" />
+              <circle cx="19" cy="13" r="3" />
+              <rect x="5" y="8" width="14" height="4" />
+            </svg>
+          </div>
+        )}
+
+        {/* The dog trots the trail while the walk is running. */}
+        {!overtime && (
+          <motion.div
+            className="absolute bottom-[9px]"
+            style={{ transform: "translateX(-50%)" }}
+            initial={false}
+            animate={{ left: `${pct}%` }}
+            transition={
+              reduce ? { duration: 0 } : { duration: 1, ease: "linear" }
+            }
             aria-hidden="true"
           >
-            <circle cx="5" cy="7" r="3" />
-            <circle cx="5" cy="13" r="3" />
-            <circle cx="19" cy="7" r="3" />
-            <circle cx="19" cy="13" r="3" />
-            <rect x="5" y="8" width="14" height="4" />
-          </svg>
-        </div>
-
-        {/* The dog — walks the trail, then sits at the finish line */}
-        <motion.div
-          className="absolute bottom-[9px]"
-          style={{ transform: "translateX(-50%)" }}
-          initial={false}
-          animate={{ left: `${pct}%` }}
-          transition={
-            reduce ? { duration: 0 } : { duration: 1, ease: "linear" }
-          }
-          aria-hidden="true"
-        >
-          {overtime ? (
             <Lottie
-              animationData={dogSit}
-              loop={animate}
-              autoplay={animate}
-              className="h-[62px] w-[62px]"
-              rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
-            />
-          ) : (
-            <Lottie
+              lottieRef={lottieRef}
               animationData={dogWalk}
               loop={animate}
               autoplay={animate}
               className="h-[58px] w-[72px]"
               rendererSettings={{ preserveAspectRatio: "xMidYMax meet" }}
             />
-          )}
-        </motion.div>
+          </motion.div>
+        )}
+
+        {/* Once the walk is done, a paw + checkmark marks the finish. */}
+        {overtime && (
+          <div className="absolute bottom-[4px] right-1" aria-hidden="true">
+            <div
+              className={`relative flex h-9 w-9 items-center justify-center rounded-full bg-trust-subtle ${
+                animate ? "wc-pop" : ""
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 20"
+                className="h-4 w-5 text-trust-strong"
+                fill="currentColor"
+              >
+                <ellipse cx="12" cy="14" rx="5" ry="4" />
+                <circle cx="4.5" cy="8" r="2.2" />
+                <circle cx="9.5" cy="4.5" r="2.2" />
+                <circle cx="14.5" cy="4.5" r="2.2" />
+                <circle cx="19.5" cy="8" r="2.2" />
+              </svg>
+            </div>
+          </div>
+        )}
       </div>
 
       <p className="mt-1 text-xs text-muted-foreground">
@@ -187,4 +204,10 @@ function fmtTime(ms: number) {
 const keyframes = `
 @keyframes wc-pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
 .wc-pulse { animation: wc-pulse 1.4s ease-in-out infinite }
+@keyframes wc-pop {
+  0% { transform: scale(0); opacity: 0 }
+  60% { transform: scale(1.15) }
+  100% { transform: scale(1); opacity: 1 }
+}
+.wc-pop { animation: wc-pop .5s ease-out both }
 `;
