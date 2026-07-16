@@ -19,7 +19,7 @@ export function PetCard({ pet, onEdit, onDelete, deleting }: PetCardProps) {
   ].filter(Boolean);
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div className="lift rounded-xl border border-border bg-surface p-4 shadow-sm hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-semibold">{pet.name}</h3>

@@ -28,7 +28,7 @@ const TOTAL_STEPS = 4;
 function OwnerOnboarding() {
   return (
     <main className="mx-auto max-w-md px-6 py-16 text-center">
-      <h1 className="text-2xl font-semibold">Welcome to Sidelick</h1>
+      <h1 className="font-display text-3xl font-semibold">Welcome to Sidelick</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Add your dog so walkers know who they&apos;ll be caring for.
       </p>
@@ -218,7 +218,7 @@ function WalkerOnboarding() {
 
   return (
     <main className="mx-auto max-w-md px-6 py-10">
-      <h1 className="mb-1 text-2xl font-semibold">Set up your walker profile</h1>
+      <h1 className="font-display mb-1 text-3xl font-semibold">Set up your walker profile</h1>
       <p className="mb-6 text-sm text-muted-foreground">A few quick steps to get you ready.</p>
       <Stepper step={step} />
 

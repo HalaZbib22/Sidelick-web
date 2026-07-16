@@ -50,14 +50,14 @@ function ProfileInner() {
           {(me.firstName[0] ?? "") + (me.lastName[0] ?? "")}
         </div>
         <div>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="font-display text-3xl font-semibold">
             {me.firstName} {me.lastName}
           </h1>
           <p className="text-sm text-muted-foreground">{ROLE_LABEL[me.role] ?? me.role}</p>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-surface p-5">
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <Row label="Email" value={me.email} />
         {me.phone && <Row label="Phone" value={me.phone} />}
         <Row label="Account type" value={ROLE_LABEL[me.role] ?? me.role} />
@@ -69,7 +69,7 @@ function ProfileInner() {
         )}
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
         <button
           type="button"
           onClick={() => router.push(routes.notificationSettings)}

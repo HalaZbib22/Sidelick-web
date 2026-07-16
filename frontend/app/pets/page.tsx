@@ -41,7 +41,7 @@ function PetsInner() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">My pets</h1>
+        <h1 className="font-display text-3xl font-semibold">My pets</h1>
         {!mode && pets && pets.length > 0 && (
           <Button onClick={() => setMode({ type: "add" })}>
             <Plus className="h-4 w-4" />

@@ -124,12 +124,34 @@ export interface BookingDetail extends Omit<BookingSummary, never> {
 
 export type PaymentStatus = "none" | "pending" | "held" | "captured" | "refunded" | "failed";
 
+/** Rails a customer can pay with. Card is Stripe; the rest are Lebanon rails + cash. */
+export type PaymentMethod = "card" | "whish" | "omt" | "bob" | "cash";
+
 /** Public payment state for a booking (both parties may read it). */
 export interface PaymentView {
   status: PaymentStatus;
   amount: number;
   currency: string;
   refundedAmount: number;
+  /** Chosen rail once a payment exists; null before the customer picks one. */
+  method: PaymentMethod | null;
+  /** Reconciliation reference for a manual rail (null for card/cash). */
+  reference: string | null;
+  /** Destination handle to pay into on a manual rail (null for card/cash). */
+  destination: string | null;
+  /** True once the customer self-reported paying a manual rail. */
+  payerMarkedPaid: boolean;
+  /** Methods on offer while nothing is committed yet. */
+  methods: PaymentMethod[];
+}
+
+/** Backend response after the customer commits to a manual rail or cash. */
+export interface ManualPaymentResult {
+  method: Exclude<PaymentMethod, "card">;
+  reference: string | null;
+  destination: string | null;
+  amount: number;
+  currency: string;
 }
 
 /** What the backend returns to mount Stripe Elements and confirm the hold. */

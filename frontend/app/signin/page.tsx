@@ -26,6 +26,9 @@ export default function SignInPage() {
   // alone auto-dismisses; this banner stays until the next attempt so the user
   // always sees why sign-in failed.
   const [authError, setAuthError] = useState<string | null>(null);
+  // "Remember me": on → token persists across restarts (localStorage);
+  // off → session-only (sessionStorage), cleared when the browser closes.
+  const [remember, setRemember] = useState(true);
 
   const form = useForm<SignInValues>({
     initialValues: { email: "", password: "" },
@@ -43,7 +46,7 @@ export default function SignInPage() {
         method: "POST",
         body: JSON.stringify(values),
       });
-      signIn(token);
+      signIn(token, remember);
       toast.success("Signed in successfully!");
       router.push(routes.dashboard);
     },
@@ -74,6 +77,7 @@ export default function SignInPage() {
         <FormField
           label="Email"
           type="email"
+          name="email"
           autoComplete="email"
           placeholder="you@example.com"
           value={form.values.email}
@@ -83,6 +87,7 @@ export default function SignInPage() {
         />
         <PasswordField
           label="Password"
+          name="password"
           autoComplete="current-password"
           placeholder="Your password"
           value={form.values.password}
@@ -90,7 +95,16 @@ export default function SignInPage() {
           onBlur={() => form.handleBlur("password")}
           error={form.errors.password}
         />
-        <div className="text-right">
+        <div className="flex items-center justify-between">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="h-4 w-4 rounded border-border text-primary accent-primary focus:ring-2 focus:ring-primary/40"
+            />
+            Remember me
+          </label>
           <Link href={routes.forgotPassword} className="text-sm text-primary">
             Forgot password?
           </Link>
