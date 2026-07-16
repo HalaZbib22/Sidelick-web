@@ -112,6 +112,8 @@ function SignUpInner() {
         <div className="grid grid-cols-2 gap-3">
           <FormField
             label="First name"
+            name="firstName"
+            autoComplete="given-name"
             placeholder="e.g. Hala"
             value={form.values.firstName}
             onChange={(e) => form.handleChange("firstName", e.target.value)}
@@ -120,6 +122,8 @@ function SignUpInner() {
           />
           <FormField
             label="Last name"
+            name="lastName"
+            autoComplete="family-name"
             placeholder="e.g. Khoury"
             value={form.values.lastName}
             onChange={(e) => form.handleChange("lastName", e.target.value)}
@@ -130,6 +134,7 @@ function SignUpInner() {
         <FormField
           label="Email"
           type="email"
+          name="email"
           autoComplete="email"
           placeholder="you@example.com"
           value={form.values.email}
@@ -146,6 +151,7 @@ function SignUpInner() {
         <div>
           <PasswordField
             label="Password"
+            name="password"
             autoComplete="new-password"
             helperText="Use at least 8 characters."
             placeholder="Create a password"
@@ -160,6 +166,7 @@ function SignUpInner() {
         </div>
         <PasswordField
           label="Confirm password"
+          name="confirmPassword"
           autoComplete="new-password"
           placeholder="Re-enter password"
           value={form.values.confirmPassword}

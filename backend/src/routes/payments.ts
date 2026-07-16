@@ -1,10 +1,17 @@
 import { Router } from "express";
 import { ok, notFoundError, forbidden, conflict, unprocessable, fail } from "../lib/response.js";
 import { query } from "../lib/db.js";
-import { getPublishableKey, isPaymentsConfigured } from "../lib/payments/index.js";
+import {
+  getPublishableKey,
+  isPaymentsConfigured,
+  availableMethods,
+} from "../lib/payments/index.js";
 import {
   createIntentForBooking,
+  createManualPayment,
+  markPayerPaid,
   getPaymentView,
+  isManualMethod,
 } from "../lib/payments/service.js";
 
 /**
@@ -20,11 +27,19 @@ import {
  */
 export const paymentsRouter = Router();
 
-/** GET /api/payments/config — publishable key the frontend needs to mount Elements. */
+/**
+ * GET /api/payments/config — what the frontend needs to render the pay UI: the
+ * Stripe publishable key (for card Elements) and the full list of methods on
+ * offer (the manual Lebanese rails + cash are always available, card only when
+ * Stripe is configured). `configured` stays true whenever ANY method exists.
+ */
 paymentsRouter.get("/config", (_req, res) => {
+  const methods = availableMethods();
   return ok(res, {
-    configured: isPaymentsConfigured(),
+    configured: methods.length > 0,
+    cardConfigured: isPaymentsConfigured(),
     publishableKey: getPublishableKey(),
+    methods,
   });
 });
 
@@ -69,4 +84,45 @@ paymentsRouter.post("/bookings/:id/intent", async (req, res) => {
     }
   }
   return ok(res, { intent: result.intent });
+});
+
+// POST /api/payments/bookings/:id/method — customer commits to a manual rail
+// (Whish / OMT / BOB) or cash. Returns the reference + destination to pay into.
+paymentsRouter.post("/bookings/:id/method", async (req, res) => {
+  const method = String(req.body?.method ?? "");
+  if (!isManualMethod(method)) {
+    return unprocessable(res, "Choose a valid payment method.");
+  }
+  const result = await createManualPayment(req.params.id, req.user!.userId, method);
+  if (!result.ok) {
+    switch (result.code) {
+      case "notfound":
+        return notFoundError(res, result.message);
+      case "forbidden":
+        return forbidden(res, result.message);
+      case "alreadypaid":
+      case "conflict":
+        return conflict(res, result.message);
+      default:
+        return unprocessable(res, result.message);
+    }
+  }
+  return ok(res, { payment: result.payment });
+});
+
+// POST /api/payments/bookings/:id/mark-paid — customer reports they've sent the
+// money on a manual rail; it enters the admin confirmation queue.
+paymentsRouter.post("/bookings/:id/mark-paid", async (req, res) => {
+  const result = await markPayerPaid(req.params.id, req.user!.userId);
+  if (!result.ok) {
+    switch (result.code) {
+      case "notfound":
+        return notFoundError(res, result.message);
+      case "forbidden":
+        return forbidden(res, result.message);
+      default:
+        return conflict(res, result.message);
+    }
+  }
+  return ok(res, { marked: true }, "Thanks — we'll confirm your payment shortly.");
 });

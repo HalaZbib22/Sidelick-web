@@ -60,7 +60,7 @@ function ProfileInner() {
           {w.lastName[0]}
         </div>
         <div>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="font-display text-3xl font-semibold">
             {w.firstName} {w.lastName[0]}.
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -89,7 +89,7 @@ function ProfileInner() {
 
       {w.bio && <p className="mt-5 text-sm leading-relaxed text-foreground">{w.bio}</p>}
 
-      <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
+      <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-md">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Starting from</p>

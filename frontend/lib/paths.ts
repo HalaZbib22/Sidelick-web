@@ -47,6 +47,9 @@ export const api = {
     `${base}/api/admin/users/${id}/file/${kind}`,
   adminDisputes: `${base}/api/admin/disputes`,
   adminResolveDispute: (id: string) => `${base}/api/admin/disputes/${id}/resolve`,
+  adminPendingPayments: `${base}/api/admin/payments/pending`,
+  adminConfirmPayment: (bookingId: string) =>
+    `${base}/api/admin/payments/${bookingId}/confirm`,
   // pets
   pets: `${base}/api/pets`,
   pet: (id: string) => `${base}/api/pets/${id}`,
@@ -69,6 +72,8 @@ export const api = {
   paymentConfig: `${base}/api/payments/config`,
   bookingPayment: (id: string) => `${base}/api/payments/bookings/${id}`,
   bookingPaymentIntent: (id: string) => `${base}/api/payments/bookings/${id}/intent`,
+  bookingPaymentMethod: (id: string) => `${base}/api/payments/bookings/${id}/method`,
+  bookingPaymentMarkPaid: (id: string) => `${base}/api/payments/bookings/${id}/mark-paid`,
   // reviews
   reviews: `${base}/api/reviews`,
   walkerReviews: (id: string) => `${base}/api/reviews/walker/${id}`,

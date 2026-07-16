@@ -7,18 +7,6 @@ import { AnimatedHeadline } from "../components/landing/AnimatedHeadline";
 import { TestimonialsCarousel } from "../components/landing/TestimonialsCarousel";
 import { ThemeToggle } from "../components/ui/ThemeToggle";
 
-function PawIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
-      <circle cx="6" cy="9" r="2.1" />
-      <circle cx="10.4" cy="6" r="2.1" />
-      <circle cx="13.6" cy="6" r="2.1" />
-      <circle cx="18" cy="9" r="2.1" />
-      <path d="M12 11c-2.6 0-4.8 2.2-4.8 4.4 0 1.7 1.4 2.6 3 2.6 1 0 1.2-.4 1.8-.4s.8.4 1.8.4c1.6 0 3-.9 3-2.6C16.8 13.2 14.6 11 12 11z" />
-    </svg>
-  );
-}
-
 const STEPS = [
   { n: "1", t: "Find a verified walker", d: "Browse trusted, ID-checked walkers and sitters near you, with real ratings." },
   { n: "2", t: "Book in seconds", d: "Pick walk, daycare, or travel sitting. See a clear price before you confirm." },
@@ -36,7 +24,7 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <span className="text-lg font-medium text-primary">Sidelick</span>
+        <span className="font-display text-xl font-semibold text-primary">Sidelick</span>
         <nav className="flex items-center gap-3 text-sm">
           <ThemeToggle />
           <Link href={routes.signin} className="text-muted-foreground hover:text-foreground">
@@ -57,8 +45,8 @@ export default function LandingPage() {
             ★ 4.9 · trusted by 2,000+ dog owners
           </span>
           <AnimatedHeadline
-            text="Care your dog will love, from people you can trust."
-            className="mt-4 text-4xl font-medium leading-tight text-foreground sm:text-5xl"
+            text="Loved by your dog. Trusted by you."
+            className="font-display mt-4 text-[2.6rem] font-medium leading-[1.05] text-foreground sm:text-[3.25rem]"
           />
           <p
             className="slk-rise mt-4 max-w-md text-base leading-relaxed text-muted-foreground"
@@ -83,12 +71,61 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <div className="relative mx-auto h-64 w-full max-w-sm md:h-80">
-          <div className="absolute inset-0 rounded-[2rem] bg-accent-subtle" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <PawIcon className="h-24 w-24 text-primary/80" />
+        <div className="relative mx-auto flex w-full max-w-sm justify-center py-6 md:justify-end">
+          {/* Soft ambient wash so the device reads as floating, not pasted on. */}
+          <div className="pointer-events-none absolute -inset-4 -z-10 rounded-[3rem] bg-accent-subtle/70 blur-2xl" />
+
+          {/* Phone frame — a live-walk tracking screen, i.e. the actual product. */}
+          <div className="relative w-[250px] rounded-[2.6rem] bg-foreground p-2.5 shadow-xl">
+            <div className="overflow-hidden rounded-[2.1rem] bg-background">
+              {/* App header */}
+              <div className="flex items-center justify-between px-4 pb-3 pt-4">
+                <span className="text-sm font-display font-semibold text-primary">Sidelick</span>
+                <span className="flex items-center gap-1.5 rounded-full bg-trust-subtle px-2 py-0.5 text-[10px] font-medium text-trust-strong">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-trust opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-trust" />
+                  </span>
+                  Live walk
+                </span>
+              </div>
+
+              {/* Route / map strip */}
+              <div className="relative mx-3 h-24 overflow-hidden rounded-2xl bg-gradient-to-br from-trust-subtle via-accent-subtle to-muted">
+                <svg viewBox="0 0 200 96" className="absolute inset-0 h-full w-full" aria-hidden="true">
+                  <path d="M18 78 C 60 68, 70 26, 120 30 S 178 40, 186 20" fill="none" stroke="hsl(var(--primary))" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="4 6" />
+                  <circle cx="18" cy="78" r="4" fill="hsl(var(--trust))" />
+                  <circle cx="186" cy="20" r="4" fill="hsl(var(--primary))" />
+                </svg>
+              </div>
+
+              {/* Walker row */}
+              <div className="mx-3 mt-3 flex items-center gap-2.5 rounded-2xl border border-border bg-surface p-2.5 shadow-sm">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-trust-subtle text-xs font-semibold text-trust-strong">
+                  SK
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1 text-[13px] font-medium text-foreground">
+                    Sara K.
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-trust" fill="currentColor" aria-hidden="true">
+                      <path d="M12 2l2.4 1.8 3 .3 1 2.8 2 2.2-1 2.8.4 3-2.6 1.4-1.4 2.6-3-.4-2.8 1-2.2-2-2.8 1-1.4-2.6L4.2 15l.4-3-1-2.8 2-2.2 1-2.8 3-.3z" />
+                      <path d="M10.6 14.3l-1.9-1.9-1.1 1.1 3 3 5-5-1.1-1.1z" fill="hsl(var(--surface))" />
+                    </svg>
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">0.4 mi away · 18 min in</span>
+                </span>
+              </div>
+
+              {/* Latest photo update */}
+              <div className="mx-3 mb-4 mt-2 rounded-2xl border border-border bg-surface p-2.5 shadow-sm">
+                <span className="text-[11px] font-medium text-muted-foreground">New photo from your walk</span>
+                <div className="mt-1.5 h-16 rounded-xl bg-gradient-to-br from-accent-subtle to-trust-subtle" />
+              </div>
+            </div>
           </div>
-          <div className="slk-float absolute left-0 top-6 flex items-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2">
+
+          {/* Floating status chips around the device. */}
+          <div className="slk-float absolute -left-2 top-10 flex items-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2 shadow-md">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-trust-subtle text-xs font-medium text-trust-strong">
               SK
             </span>
@@ -98,7 +135,7 @@ export default function LandingPage() {
             </span>
           </div>
           <div
-            className="slk-float absolute bottom-8 right-0 rounded-2xl border border-border bg-surface px-3 py-2"
+            className="slk-float absolute bottom-10 -right-2 rounded-2xl border border-border bg-surface px-3 py-2 shadow-md"
             style={{ animationDelay: "1.5s" }}
           >
             <span className="block text-[11px] text-muted-foreground">Walk Share</span>
@@ -113,7 +150,7 @@ export default function LandingPage() {
           ["Live updates", "photos & check-ins"],
           ["One trusted person", "walk, daycare & travel"],
         ].map(([t, d]) => (
-          <div key={t} className="rounded-2xl border border-border bg-surface p-4">
+          <div key={t} className="lift rounded-2xl border border-border bg-surface p-4 shadow-sm hover:shadow-md">
             <p className="text-sm font-medium">{t}</p>
             <p className="mt-0.5 text-sm text-muted-foreground">{d}</p>
           </div>
@@ -122,10 +159,10 @@ export default function LandingPage() {
 
       <Reveal>
       <section className="mx-auto max-w-6xl px-6 py-14">
-        <h2 className="text-center text-2xl font-medium">How Sidelick works</h2>
+        <h2 className="font-display text-center text-3xl font-medium">How Sidelick works</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {STEPS.map((s) => (
-            <TiltCard key={s.n} className="rounded-2xl border border-border bg-surface p-6">
+            <TiltCard key={s.n} className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
                 {s.n}
               </span>
@@ -139,15 +176,15 @@ export default function LandingPage() {
 
       <Reveal>
       <section className="mx-auto max-w-6xl px-6 pb-16">
-        <h2 className="mb-6 text-center text-2xl font-medium">Loved by dog owners</h2>
+        <h2 className="font-display mb-6 text-center text-3xl font-medium">Loved by dog owners</h2>
         <TestimonialsCarousel items={TESTIMONIALS} />
       </section>
       </Reveal>
 
       <Reveal>
       <section className="mx-auto max-w-6xl px-6 pb-16">
-        <div className="rounded-[2rem] bg-primary px-8 py-12 text-center text-primary-foreground">
-          <h2 className="text-2xl font-medium">Ready to find your dog’s new best friend?</h2>
+        <div className="rounded-[2rem] bg-primary px-8 py-12 text-center text-primary-foreground shadow-glow">
+          <h2 className="font-display text-3xl font-medium">Ready to find your dog’s new best friend?</h2>
           <p className="mx-auto mt-2 max-w-md text-sm opacity-90">
             Join dog owners across Beirut booking trusted care in minutes.
           </p>

@@ -63,13 +63,13 @@ function NotificationSettingsInner() {
   return (
     <main className="mx-auto max-w-xl px-6 py-10">
       <BackButton />
-      <h1 className="mb-1 text-2xl font-semibold">Notifications</h1>
+      <h1 className="font-display mb-1 text-3xl font-semibold">Notifications</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         Choose what Sidelick can notify you about. Turning a category off silences
         both the in-app bell and closed-app alerts.
       </p>
 
-      <div className="rounded-2xl border border-border bg-surface p-5">
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         {isLoading || !prefs ? (
           <div className="space-y-4">
             {CATEGORIES.map((c) => (
@@ -97,7 +97,7 @@ function NotificationSettingsInner() {
 
       {/* Closed-app delivery (Web Push) — device-level, separate from categories. */}
       {push.supported && (
-        <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
+        <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-sm font-medium">

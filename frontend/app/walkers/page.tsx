@@ -96,7 +96,7 @@ function DiscoverInner() {
     <main className="mx-auto max-w-2xl px-6 py-8">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Walkers near you</h1>
+          <h1 className="font-display text-3xl font-semibold">Walkers near you</h1>
           <p className="flex items-center gap-1 text-sm text-muted-foreground">
             <MapPin className="h-4 w-4" /> Verified walkers &amp; sitters
           </p>
@@ -173,7 +173,7 @@ function DiscoverInner() {
           {filtered.map((w) => (
             <div
               key={w.id}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4"
+              className="lift flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm hover:shadow-md"
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-subtle text-sm font-medium text-link">
                 {w.firstName[0]}

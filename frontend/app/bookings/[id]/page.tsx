@@ -93,7 +93,7 @@ function BookingInner() {
       </Link>
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">
+        <h1 className="font-display text-3xl font-semibold">
           {isWalker ? "Request from" : "Booking with"} {b.counterpartName}
         </h1>
         <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
@@ -101,7 +101,7 @@ function BookingInner() {
         </span>
       </div>
 
-      <div className="mt-5 space-y-2 rounded-2xl border border-border bg-surface p-4">
+      <div className="mt-5 space-y-2 rounded-2xl border border-border bg-surface p-4 shadow-sm">
         {b.segments.map((s, i) => (
           <div key={i} className="flex justify-between text-sm">
             <span className="capitalize">{s.segmentType}</span>
@@ -136,7 +136,7 @@ function BookingInner() {
       )}
 
       {b.status === "completed" && b.actualStartAt && b.actualEndAt && (
-        <div className="mt-5 rounded-2xl border border-border bg-surface p-4">
+        <div className="mt-5 rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Actual time</span>
             <span className="font-medium">
@@ -167,7 +167,7 @@ function BookingInner() {
       )}
 
       {b.priceBreakdown && (
-        <div className="mt-4 space-y-2 rounded-2xl border border-border bg-surface p-4">
+        <div className="mt-4 space-y-2 rounded-2xl border border-border bg-surface p-4 shadow-sm">
           {b.priceBreakdown.lines.map((l, i) => (
             <div key={i} className={cn("flex justify-between text-sm", l.amount < 0 ? "text-trust-strong" : "text-foreground")}>
               <span>{l.label}</span>
@@ -182,7 +182,7 @@ function BookingInner() {
       )}
 
       {b.specialInstructions && (
-        <div className="mt-4 rounded-2xl border border-border bg-surface p-4">
+        <div className="mt-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <p className="text-xs font-medium text-muted-foreground">Notes</p>
           <p className="mt-1 text-sm">{b.specialInstructions}</p>
         </div>

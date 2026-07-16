@@ -33,7 +33,7 @@ function BookingsInner() {
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
-      <h1 className="mb-6 text-2xl font-bold">Bookings</h1>
+      <h1 className="font-display mb-6 text-3xl font-semibold">Bookings</h1>
       {isLoading ? (
         <ListSkeleton count={3}>
           <BookingCardSkeleton />
@@ -48,7 +48,7 @@ function BookingsInner() {
             <Link
               key={b.id}
               href={routes.booking(b.id)}
-              className="block rounded-2xl border border-border bg-surface p-4 transition hover:bg-muted/40"
+              className="lift block rounded-2xl border border-border bg-surface p-4 shadow-sm transition hover:bg-muted/40 hover:shadow-md"
             >
               <div className="flex items-center justify-between">
                 <p className="flex items-center gap-1.5 font-medium">

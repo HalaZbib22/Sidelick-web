@@ -377,6 +377,10 @@ CREATE TABLE platform_config (
     late_cancel_refund_pct NUMERIC(4, 2) NOT NULL DEFAULT 0.50,
     -- walker payout is held this long after capture so the customer can dispute
     payout_review_hours   INT NOT NULL DEFAULT 24,
+    -- destination handles the customer sends money to for manual Lebanese rails
+    whish_number          TEXT NOT NULL DEFAULT '+961 00 000 000',
+    omt_beneficiary       TEXT NOT NULL DEFAULT 'Sidelick SAL',
+    bob_beneficiary       TEXT NOT NULL DEFAULT 'Sidelick SAL',
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -388,7 +392,7 @@ CREATE TABLE payouts (
     walker_id     UUID NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
     amount        NUMERIC(10, 2) NOT NULL,
     currency      TEXT NOT NULL CHECK (currency IN ('USD', 'LBP', 'AED', 'SAR')),
-    method        TEXT NOT NULL CHECK (method IN ('whish', 'omt', 'tap_destination', 'paytabs_split', 'bank', 'stripe')),
+    method        TEXT NOT NULL CHECK (method IN ('whish', 'omt', 'bob', 'tap_destination', 'paytabs_split', 'bank', 'stripe')),
     status        TEXT NOT NULL DEFAULT 'pending'
                       CHECK (status IN ('pending', 'processing', 'paid', 'failed')),
     period_start  DATE,
@@ -406,7 +410,7 @@ CREATE TABLE payments (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     booking_id          UUID NOT NULL UNIQUE REFERENCES bookings (id) ON DELETE RESTRICT,
 
-    provider            TEXT NOT NULL CHECK (provider IN ('whish', 'omt', 'tap', 'areeba', 'paytabs', 'cash', 'stripe')),
+    provider            TEXT NOT NULL CHECK (provider IN ('whish', 'omt', 'bob', 'tap', 'areeba', 'paytabs', 'cash', 'stripe')),
     method              TEXT NOT NULL CHECK (method IN ('card', 'cash_in', 'transfer', 'cash_on_service')),
 
     currency            TEXT NOT NULL CHECK (currency IN ('USD', 'LBP', 'AED', 'SAR')),
@@ -418,7 +422,8 @@ CREATE TABLE payments (
 
     status              TEXT NOT NULL DEFAULT 'pending'
                             CHECK (status IN ('pending', 'held', 'captured', 'refunded', 'failed')),
-    provider_ref        TEXT,                              -- gateway txn id / OMT reference
+    provider_ref        TEXT,                              -- gateway txn id / manual-rail reconciliation reference
+    payer_marked_paid_at TIMESTAMPTZ,                       -- customer self-reported "I sent it" on a manual rail; NULL until tapped
 
     payout_id           UUID REFERENCES payouts (id) ON DELETE SET NULL,  -- which payout released the walker portion
     payout_eligible_at  TIMESTAMPTZ,                        -- captured_at + review window; NULL until captured
@@ -430,6 +435,26 @@ CREATE TABLE payments (
 );
 CREATE INDEX idx_payments_status ON payments (status);
 CREATE INDEX idx_payments_payout ON payments (payout_id);
+
+-- ============================================================
+-- WALKER LEDGER  (commission the walker owes the platform, e.g. cash bookings)
+--   For cash-on-service the walker holds the full customer amount and owes the
+--   platform its commission. A positive amount = walker owes the platform; a
+--   payout batch nets outstanding entries against the walker's online earnings.
+-- ============================================================
+CREATE TABLE walker_ledger (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    walker_id   UUID NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+    booking_id  UUID REFERENCES bookings (id) ON DELETE SET NULL,
+    entry_type  TEXT NOT NULL CHECK (entry_type IN ('cash_commission_due', 'payout_offset', 'adjustment')),
+    amount      NUMERIC(10, 2) NOT NULL,   -- positive = walker owes platform; negative = credit
+    currency    TEXT NOT NULL CHECK (currency IN ('USD', 'LBP', 'AED', 'SAR')),
+    note        TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_walker_ledger_walker ON walker_ledger (walker_id, created_at);
+CREATE UNIQUE INDEX uq_walker_ledger_cash_commission
+  ON walker_ledger (booking_id) WHERE entry_type = 'cash_commission_due';
 
 -- ============================================================
 -- DISPUTES  (trust & safety: customer-raised problem with a booking)

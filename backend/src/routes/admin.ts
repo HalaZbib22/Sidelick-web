@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ok, notFoundError, unprocessable, conflict } from "../lib/response.js";
 import { query } from "../lib/db.js";
 import { listDisputes, resolveDispute } from "../lib/disputes.js";
+import { confirmManualReceipt } from "../lib/payments/service.js";
 import { notify } from "../lib/realtime.js";
 
 // Mounted behind requireAuth + requireRole("admin").
@@ -128,4 +129,53 @@ adminRouter.patch("/disputes/:id/resolve", async (req, res) => {
   });
 
   return ok(res, { dispute: result.dispute }, "Dispute resolved");
+});
+
+// GET /api/admin/payments/pending — manual-rail payments the customer says they've
+// sent (payer_marked_paid_at set) but that an admin hasn't confirmed received yet.
+adminRouter.get("/payments/pending", async (_req, res) => {
+  const r = await query(
+    `SELECT p.booking_id     AS "bookingId",
+            p.provider,
+            p.amount,
+            p.currency,
+            p.provider_ref   AS "reference",
+            p.payer_marked_paid_at AS "markedPaidAt",
+            cu.first_name || ' ' || cu.last_name AS "customerName",
+            wu.first_name || ' ' || wu.last_name AS "walkerName"
+       FROM payments p
+       JOIN bookings b ON b.id = p.booking_id
+       JOIN users cu ON cu.id = b.customer_id
+       JOIN users wu ON wu.id = b.walker_id
+      WHERE p.method IN ('cash_in', 'transfer')
+        AND p.status = 'pending'
+        AND p.payer_marked_paid_at IS NOT NULL
+      ORDER BY p.payer_marked_paid_at ASC
+      LIMIT 200`
+  );
+  return ok(res, { payments: r.rows });
+});
+
+// POST /api/admin/payments/:bookingId/confirm — admin confirms receipt of a manual
+// payment (Whish / OMT / BOB): flips the payment pending → held so the walk can run.
+adminRouter.post("/payments/:bookingId/confirm", async (req, res) => {
+  const result = await confirmManualReceipt(req.params.bookingId);
+  if (!result.ok) {
+    if (result.code === "notfound") return notFoundError(res, result.message);
+    return conflict(res, result.message);
+  }
+  const r = await query<{ customer_id: string }>(
+    "SELECT customer_id FROM bookings WHERE id = $1",
+    [req.params.bookingId]
+  );
+  if (r.rows[0]) {
+    await notify({
+      userId: r.rows[0].customer_id,
+      type: "payment_received",
+      title: "Payment confirmed",
+      body: "We've confirmed your payment — your booking is secured.",
+      bookingId: req.params.bookingId,
+    });
+  }
+  return ok(res, { confirmed: true }, "Payment confirmed");
 });

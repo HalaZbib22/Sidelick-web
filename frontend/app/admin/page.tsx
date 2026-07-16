@@ -8,6 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { Skeleton, ListSkeleton } from "../../components/ui/Skeleton";
 import { ProtectedImage } from "../../components/ui/ProtectedImage";
 import { DisputeQueue } from "../../components/admin/DisputeQueue";
+import { PaymentQueue } from "../../components/admin/PaymentQueue";
 import { apiFetch } from "../../lib/api";
 import { api } from "../../lib/paths";
 import { getApiErrorMessage } from "../../lib/forms";
@@ -152,10 +153,11 @@ function VerificationsQueue() {
   );
 }
 
-type AdminTab = "verifications" | "disputes";
+type AdminTab = "verifications" | "payments" | "disputes";
 
 const TABS: { key: AdminTab; label: string }[] = [
   { key: "verifications", label: "Verifications" },
+  { key: "payments", label: "Payments" },
   { key: "disputes", label: "Disputes" },
 ];
 
@@ -184,7 +186,13 @@ function AdminInner() {
         ))}
       </div>
 
-      {tab === "verifications" ? <VerificationsQueue /> : <DisputeQueue />}
+      {tab === "verifications" ? (
+        <VerificationsQueue />
+      ) : tab === "payments" ? (
+        <PaymentQueue />
+      ) : (
+        <DisputeQueue />
+      )}
     </main>
   );
 }
