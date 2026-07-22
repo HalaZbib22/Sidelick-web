@@ -110,39 +110,52 @@ sudo mkdir -p /opt/sidelick
 sudo chown $USER:$USER /opt/sidelick
 ```
 
-### 2. Configure Environment on Server
+### 2. Verify Deployment Directory
 
-Create the environment file on your server:
+The workflow will automatically create `/opt/sidelick` and generate the `.env.docker` file from GitHub Secrets.
+
+Optionally, you can pre-create the directory:
 
 ```bash
-cd /opt/sidelick
-nano .env.docker
+sudo mkdir -p /opt/sidelick
+sudo chown $USER:$USER /opt/sidelick
 ```
 
-Add your production configuration:
-```bash
-POSTGRES_PASSWORD=strong_production_password
-JWT_SECRET=very_long_random_production_secret
-JWT_EXPIRES_IN=7d
-CORS_ORIGIN=https://yourdomain.com
-FRONTEND_URL=https://yourdomain.com
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com
-
-# Optional: Add Stripe, VAPID keys, etc.
-```
+**Note:** You do NOT need to manually create `.env.docker` on the server - the GitHub Actions workflow will generate it automatically from the secrets you configure in step 3.
 
 ### 3. Configure GitHub Secrets
 
 In your GitHub repository, go to **Settings → Secrets and variables → Actions** and add:
 
-| Secret Name | Description | Example |
-|------------|-------------|---------|
-| `SSH_HOST` | Server IP or hostname | `192.168.1.100` or `server.example.com` |
-| `SSH_USERNAME` | SSH username | `ubuntu` or `deploy` |
-| `SSH_PASSWORD` | SSH password for the user | `your_secure_password` |
-| `SSH_PORT` | SSH port (optional, defaults to 22) | `22` |
+#### SSH Connection Secrets
 
-**Note:** The workflow uses password-based authentication. Make sure your server allows password authentication in SSH config (`/etc/ssh/sshd_config` should have `PasswordAuthentication yes`).
+| Secret Name | Description | Example | Required |
+|------------|-------------|---------|----------|
+| `SSH_HOST` | Server IP or hostname | `192.168.1.100` or `server.example.com` | ✅ |
+| `SSH_USERNAME` | SSH username | `ubuntu` or `deploy` | ✅ |
+| `SSH_PASSWORD` | SSH password for the user | `your_secure_password` | ✅ |
+| `SSH_PORT` | SSH port (optional, defaults to 22) | `22` | ❌ |
+
+#### Application Environment Secrets
+
+The workflow will automatically create the `.env.docker` file on the server from these secrets:
+
+| Secret Name | Description | Example | Required |
+|------------|-------------|---------|----------|
+| `POSTGRES_PASSWORD` | PostgreSQL database password | `strong_db_password` | ✅ |
+| `JWT_SECRET` | JWT signing secret | `very_long_random_secret_key` | ✅ |
+| `CORS_ORIGIN` | Allowed CORS origins | `https://yourdomain.com` | ✅ |
+| `FRONTEND_URL` | Frontend URL | `https://yourdomain.com` | ✅ |
+| `NEXT_PUBLIC_API_URL` | Backend API URL | `https://api.yourdomain.com` | ✅ |
+| `JWT_EXPIRES_IN` | JWT expiration time | `7d` | ❌ |
+| `VAPID_PUBLIC_KEY` | Web push public key | `BN...` | ❌ |
+| `VAPID_PRIVATE_KEY` | Web push private key | `...` | ❌ |
+| `VAPID_SUBJECT` | Web push subject | `mailto:support@sidelick.app` | ❌ |
+| `STRIPE_SECRET_KEY` | Stripe secret key | `sk_live_...` | ❌ |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key | `pk_live_...` | ❌ |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook secret | `whsec_...` | ❌ |
+
+**Note:** The workflow uses password-based authentication and automatically creates the `.env.docker` file from GitHub Secrets. Make sure your server allows password authentication in SSH config (`/etc/ssh/sshd_config` should have `PasswordAuthentication yes`).
 
 ### 4. Trigger Deployment
 
