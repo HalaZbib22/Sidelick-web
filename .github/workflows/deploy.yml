@@ -38,6 +38,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
 
       - name: Build Backend Image
         uses: docker/build-push-action@v5

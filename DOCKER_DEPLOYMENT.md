@@ -148,7 +148,7 @@ The workflow will automatically create the `.env.docker` file on the server from
 | `JWT_SECRET` | JWT signing secret | `very_long_random_secret_key` | ✅ |
 | `CORS_ORIGIN` | Allowed CORS origins | `https://yourdomain.com` | ✅ |
 | `FRONTEND_URL` | Frontend URL | `https://yourdomain.com` | ✅ |
-| `NEXT_PUBLIC_API_URL` | Backend API URL | `https://api.yourdomain.com` | ✅ |
+| `NEXT_PUBLIC_API_URL` | Backend API URL (public URL accessible from browser, NOT `http://backend:4000`) | `https://api.yourdomain.com` or `http://your-server-ip:4000` | ✅ |
 | `JWT_EXPIRES_IN` | JWT expiration time | `7d` | ❌ |
 | `VAPID_PUBLIC_KEY` | Web push public key | `BN...` | ❌ |
 | `VAPID_PRIVATE_KEY` | Web push private key | `...` | ❌ |
@@ -157,7 +157,12 @@ The workflow will automatically create the `.env.docker` file on the server from
 | `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key | `pk_live_...` | ❌ |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook secret | `whsec_...` | ❌ |
 
-**Note:** The workflow uses password-based authentication and automatically creates the `.env.docker` file from GitHub Secrets. Make sure your server allows password authentication in SSH config (`/etc/ssh/sshd_config` should have `PasswordAuthentication yes`).
+**Important Notes:**
+- The workflow uses password-based authentication and automatically creates the `.env.docker` file from GitHub Secrets
+- Make sure your server allows password authentication in SSH config (`/etc/ssh/sshd_config` should have `PasswordAuthentication yes`)
+- `NEXT_PUBLIC_API_URL` is **baked into the frontend at build time** - it must be the public URL that browsers can access (like `https://api.yourdomain.com` or `http://your-server-ip:4000`), NOT the internal Docker network URL (`http://backend:4000`)
+- `CORS_ORIGIN` supports multiple URLs separated by commas (no spaces): `https://domain1.com,https://domain2.com`
+- If you change `NEXT_PUBLIC_API_URL`, you must trigger a new deployment to rebuild the frontend
 
 ### 4. Trigger Deployment
 
