@@ -46,26 +46,24 @@ jobs:
           docker pull postgres:16-alpine
           docker save postgres:16-alpine -o /tmp/postgres-image.tar
 
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Create deployment directory on server
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "mkdir -p /tmp/sidelick-deploy /opt/sidelick"
+
       - name: Copy Docker images to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          source: "/tmp/frontend-image.tar,/tmp/backend-image.tar,/tmp/postgres-image.tar"
-          target: "/tmp/sidelick-deploy"
-          strip_components: 1
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/frontend-image.tar ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/backend-image.tar ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/postgres-image.tar ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/
 
       - name: Copy application files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          source: "docker-compose.yml,schema.sql,.env.docker.example"
-          target: "/opt/sidelick"
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} docker-compose.yml ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} schema.sql ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} .env.docker.example ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/
 
       - name: Deploy with Docker Compose via SSH
         uses: appleboy/ssh-action@v1.0.3
