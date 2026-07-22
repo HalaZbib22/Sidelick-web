@@ -5,12 +5,18 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for better layer caching
 COPY package.json package-lock.json ./
-RUN npm ci
 
-# Copy source code and TypeScript config
-COPY . .
+# Install dependencies with caching optimizations
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
+
+# Copy TypeScript config first (changes less frequently)
+COPY tsconfig.json ./
+
+# Copy source code
+COPY src ./src
 
 # Build TypeScript
 RUN npm run build
@@ -19,11 +25,12 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 # Copy package files and install production dependencies only
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production
 
 # Copy built code from builder
 COPY --from=builder /app/dist ./dist

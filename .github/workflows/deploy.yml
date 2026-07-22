@@ -11,7 +11,7 @@ env:
   REGISTRY_IMAGE: sidelick
 
 jobs:
-  build-and-deploy:
+  build-images:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +20,13 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
 
+      # Build frontend and backend in parallel using matrix would be ideal,
+      # but we'll use background jobs for parallelization
       - name: Build Frontend Image
         uses: docker/build-push-action@v5
         with:
@@ -28,8 +34,10 @@ jobs:
           file: ./frontend/Dockerfile
           tags: ${{ env.REGISTRY_IMAGE }}-frontend:latest
           outputs: type=docker,dest=/tmp/frontend-image.tar
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
       - name: Build Backend Image
         uses: docker/build-push-action@v5
@@ -38,13 +46,48 @@ jobs:
           file: ./backend/Dockerfile
           tags: ${{ env.REGISTRY_IMAGE }}-backend:latest
           outputs: type=docker,dest=/tmp/backend-image.tar
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
-      - name: Pull PostgreSQL Image
+      - name: Pull and save PostgreSQL Image
         run: |
           docker pull postgres:16-alpine
           docker save postgres:16-alpine -o /tmp/postgres-image.tar
+
+      # Compress images for faster transfer
+      - name: Compress Docker images
+        run: |
+          pigz -9 /tmp/frontend-image.tar &
+          pigz -9 /tmp/backend-image.tar &
+          pigz -9 /tmp/postgres-image.tar &
+          wait
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: |
+            /tmp/frontend-image.tar.gz
+            /tmp/backend-image.tar.gz
+            /tmp/postgres-image.tar.gz
+          retention-days: 1
+          compression-level: 0  # Already compressed
+
+  deploy:
+    needs: build-images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: /tmp
 
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
@@ -53,17 +96,20 @@ jobs:
         run: |
           sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "mkdir -p /tmp/sidelick-deploy /opt/sidelick"
 
+      # Transfer compressed images in parallel for faster upload
       - name: Copy Docker images to server
         run: |
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/frontend-image.tar ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/backend-image.tar ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/postgres-image.tar ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -C -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/frontend-image.tar.gz ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/ &
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -C -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/backend-image.tar.gz ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/ &
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -C -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} /tmp/postgres-image.tar.gz ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/sidelick-deploy/ &
+          wait
 
       - name: Copy application files to server
         run: |
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} docker-compose.yml ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} schema.sql ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} .env.docker.example ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} docker-compose.yml ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/ &
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} schema.sql ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/ &
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} .env.docker.example ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/ &
+          wait
 
       - name: Create .env.docker file on server
         uses: appleboy/ssh-action@v1.0.3
@@ -103,12 +149,20 @@ jobs:
           script: |
             set -e
 
-            echo "Loading Docker images..."
-            docker load -i /tmp/sidelick-deploy/frontend-image.tar
-            docker load -i /tmp/sidelick-deploy/backend-image.tar
-            docker load -i /tmp/sidelick-deploy/postgres-image.tar
+            echo "Decompressing Docker images..."
+            cd /tmp/sidelick-deploy
+            pigz -d frontend-image.tar.gz &
+            pigz -d backend-image.tar.gz &
+            pigz -d postgres-image.tar.gz &
+            wait
 
-            echo "Cleaning up tar files..."
+            echo "Loading Docker images..."
+            docker load -i frontend-image.tar &
+            docker load -i backend-image.tar &
+            docker load -i postgres-image.tar &
+            wait
+
+            echo "Cleaning up image files..."
             rm -f /tmp/sidelick-deploy/*.tar
 
             echo "Navigating to application directory..."

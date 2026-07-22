@@ -2,6 +2,8 @@
 
 This guide covers deploying the Sidelick application using Docker and Docker Compose, both locally and to a remote server via GitHub Actions.
 
+**📊 Performance:** The optimized pipeline deploys in 5-14 minutes (vs 19-29 min unoptimized). See [DEPLOYMENT_OPTIMIZATIONS.md](./DEPLOYMENT_OPTIMIZATIONS.md) for details.
+
 ## Table of Contents
 - [Prerequisites](#prerequisites)
 - [Local Development with Docker](#local-development-with-docker)
