@@ -1,0 +1,131 @@
+name: Deploy to Server via SSH
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+env:
+  REGISTRY_IMAGE: sidelick
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          tags: ${{ env.REGISTRY_IMAGE }}-frontend:latest
+          outputs: type=docker,dest=/tmp/frontend-image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          tags: ${{ env.REGISTRY_IMAGE }}-backend:latest
+          outputs: type=docker,dest=/tmp/backend-image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Pull PostgreSQL Image
+        run: |
+          docker pull postgres:16-alpine
+          docker save postgres:16-alpine -o /tmp/postgres-image.tar
+
+      - name: Copy Docker images to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "/tmp/frontend-image.tar,/tmp/backend-image.tar,/tmp/postgres-image.tar"
+          target: "/tmp/sidelick-deploy"
+          strip_components: 1
+
+      - name: Copy application files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "docker-compose.yml,schema.sql,.env.docker.example"
+          target: "/opt/sidelick"
+
+      - name: Deploy with Docker Compose via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "Loading Docker images..."
+            docker load -i /tmp/sidelick-deploy/frontend-image.tar
+            docker load -i /tmp/sidelick-deploy/backend-image.tar
+            docker load -i /tmp/sidelick-deploy/postgres-image.tar
+
+            echo "Cleaning up tar files..."
+            rm -f /tmp/sidelick-deploy/*.tar
+
+            echo "Navigating to application directory..."
+            cd /opt/sidelick
+
+            echo "Checking for .env.docker file..."
+            if [ ! -f .env.docker ]; then
+              echo "WARNING: .env.docker not found. Please create it from .env.docker.example"
+              echo "Deployment may fail without proper environment variables."
+              exit 1
+            fi
+
+            echo "Stopping existing containers..."
+            docker compose --env-file .env.docker down || true
+
+            echo "Starting new containers..."
+            docker compose --env-file .env.docker up -d
+
+            echo "Waiting for services to be healthy..."
+            sleep 10
+
+            echo "Checking container status..."
+            docker compose --env-file .env.docker ps
+
+            echo "Cleaning up old images..."
+            docker image prune -f
+
+            echo "Deployment completed successfully!"
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            cd /opt/sidelick
+            echo "Checking if all services are running..."
+            docker compose --env-file .env.docker ps
+
+            echo "Checking backend health..."
+            docker compose --env-file .env.docker logs backend --tail=50
+
+            echo "Checking frontend health..."
+            docker compose --env-file .env.docker logs frontend --tail=50
