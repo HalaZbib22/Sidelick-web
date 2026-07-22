@@ -18,6 +18,10 @@ COPY tsconfig.json ./
 # Copy source code
 COPY src ./src
 
+# Copy scripts and seed assets (needed for runtime)
+COPY scripts ./scripts
+COPY seed_assets ./seed_assets
+
 # Build TypeScript
 RUN npm run build
 
