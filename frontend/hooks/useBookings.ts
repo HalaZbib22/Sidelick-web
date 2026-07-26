@@ -10,6 +10,9 @@ import type {
   Dispute,
   DisputeReason,
   DeclineReason,
+  PetReport,
+  PetReportCategory,
+  DebriefInput,
 } from "../lib/types";
 
 export function useBookings() {
@@ -119,5 +122,60 @@ export function useOpenDispute(id: string) {
       qc.invalidateQueries({ queryKey: ["dispute", id] });
       qc.invalidateQueries({ queryKey: ["booking", id] });
     },
+  });
+}
+
+/** Walker confirms the pets match their profiles at handoff. */
+export function useConfirmPets(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ petsConfirmedAt: string }>(api.bookingConfirmPets(id), { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["booking", id] }),
+  });
+}
+
+/** The caller's pet reports on this booking. */
+export function usePetReports(id: string, enabled = true) {
+  return useQuery({
+    queryKey: ["pet-reports", id],
+    enabled,
+    queryFn: async () =>
+      (await apiFetch<{ reports: PetReport[] }>(api.bookingPetReports(id))).reports,
+  });
+}
+
+/** Whether the walker already debriefed (or skipped) this booking. */
+export function useDebrief(id: string, enabled = true) {
+  return useQuery({
+    queryKey: ["debrief", id],
+    enabled,
+    queryFn: async () =>
+      (await apiFetch<{ debrief: { id: string; skipped: boolean } | null }>(
+        api.bookingDebrief(id)
+      )).debrief,
+  });
+}
+
+/** Walker submits (or skips) the internal post-service debrief. */
+export function useSubmitDebrief(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DebriefInput | { skipped: true }) =>
+      apiFetch(api.bookingDebrief(id), { method: "POST", body: JSON.stringify(input) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["debrief", id] }),
+  });
+}
+
+/** Walker flags a pet-profile inaccuracy. */
+export function useFilePetReport(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { petId: string; category: PetReportCategory; note?: string }) =>
+      apiFetch<{ report: PetReport }>(api.bookingPetReport(id), {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pet-reports", id] }),
   });
 }

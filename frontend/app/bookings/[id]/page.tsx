@@ -12,6 +12,8 @@ import { WalkCountdown } from "../../../components/bookings/WalkCountdown";
 import { WalkPhotoCapture } from "../../../components/bookings/WalkPhotoCapture";
 import { WalkPhotos } from "../../../components/bookings/WalkPhotos";
 import { BookingReviewSection } from "../../../components/reviews/BookingReviewSection";
+import { PetConfirmCard } from "../../../components/bookings/PetConfirmCard";
+import { ServiceDebriefCard } from "../../../components/bookings/ServiceDebriefCard";
 import { DisputeSection } from "../../../components/bookings/DisputeSection";
 import { DeclineDialog } from "../../../components/bookings/DeclineDialog";
 import { PaymentSection } from "../../../components/payments/PaymentSection";
@@ -111,6 +113,17 @@ function BookingInner() {
         {b.isSharedWalk && <p className="text-xs text-trust-strong">Shared (group) walk</p>}
         {b.dropoffRequired && <p className="text-xs text-muted-foreground">Drop-off at home requested</p>}
       </div>
+
+      {/* Walker-side handoff: confirm the pets match their profiles / report issues. */}
+      {b.role === "walker" &&
+        ["accepted", "in_progress", "completed"].includes(b.status) && (
+          <PetConfirmCard booking={b} />
+        )}
+
+      {/* Walker's internal post-service debrief (admin-only visibility). */}
+      {b.role === "walker" && b.status === "completed" && (
+        <ServiceDebriefCard bookingId={id} ownerName={b.counterpartName} />
+      )}
 
       {b.status === "expired" && b.role === "customer" && (
         <div className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
@@ -249,7 +262,11 @@ function BookingInner() {
       )}
 
       {b.status === "completed" && b.role === "customer" && (
-        <BookingReviewSection bookingId={id} walkerName={b.counterpartName} />
+        <BookingReviewSection
+          bookingId={id}
+          walkerName={b.counterpartName}
+          walkerId={b.walkerId}
+        />
       )}
 
       {b.role === "customer" && (b.status === "in_progress" || b.status === "completed") && (

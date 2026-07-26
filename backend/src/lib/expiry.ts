@@ -59,7 +59,13 @@ async function suggestAlternatives(
   serviceType: string,
   limit = 3
 ): Promise<{ id: string; name: string }[]> {
-  const needed = serviceType === "walk_sit" ? ["walk", "sit"] : [serviceType];
+  // Legacy combo bookings ('walk_sit') map onto the new catalog's walk+boarding.
+  const needed =
+    serviceType === "walk_sit"
+      ? ["walk", "boarding"]
+      : serviceType === "sit"
+        ? ["boarding"]
+        : [serviceType];
 
   const cust = await query<{ latitude: number | null; longitude: number | null }>(
     "SELECT latitude, longitude FROM users WHERE id = $1",

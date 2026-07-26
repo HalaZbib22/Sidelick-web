@@ -3,8 +3,13 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Cat } from "lucide-react";
 import { Protected } from "../../../components/auth/Protected";
+import { FavoriteHeart } from "../../../components/walkers/FavoriteHeart";
+import { VerifiedBadge } from "../../../components/walkers/VerifiedBadge";
+import { AmenityList } from "../../../components/walkers/AmenityChips";
+import { SERVICE_CHIP, SERVICE_META } from "../../../lib/services";
+import { useToggleFavorite } from "../../../hooks/useFavorites";
 import { Skeleton, AvatarHeaderSkeleton } from "../../../components/ui/Skeleton";
 import { WalkerReviewsList } from "../../../components/reviews/WalkerReviewsList";
 import { apiFetch } from "../../../lib/api";
@@ -22,6 +27,7 @@ function ProfileInner() {
       return d.walker;
     },
   });
+  const toggleFavorite = useToggleFavorite();
 
   if (isLoading) {
     return (
@@ -59,27 +65,51 @@ function ProfileInner() {
           {w.firstName[0]}
           {w.lastName[0]}
         </div>
-        <div>
-          <h1 className="font-display text-3xl font-semibold">
-            {w.firstName} {w.lastName[0]}.
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display flex items-center gap-2 text-3xl font-semibold">
+            <span className="truncate">
+              {w.firstName} {w.lastName[0]}.
+            </span>
+            <VerifiedBadge className="h-6 w-6" />
           </h1>
           <p className="text-sm text-muted-foreground">
-            <span className="text-trust-strong">✓ Verified</span>
             {w.ratingCount > 0 ? (
-              <> · <span className="text-primary">★ {w.ratingAvg.toFixed(1)}</span> ({w.ratingCount})</>
+              <>
+                <span className="text-primary">★ {w.ratingAvg.toFixed(1)}</span> ({w.ratingCount}{" "}
+                {w.ratingCount === 1 ? "review" : "reviews"})
+              </>
             ) : (
-              " · New on Sidelick"
+              "New on Sidelick"
             )}
           </p>
         </div>
+        <FavoriteHeart
+          active={w.isFavorite}
+          onToggle={() =>
+            toggleFavorite.mutate({ walkerId: w.id, next: !w.isFavorite })
+          }
+        />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {w.serviceTypes.map((s) => (
-          <span key={s} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-            {s === "walk" ? "Dog walking" : "Sitting / boarding"}
+        {w.serviceTypes.map((s) => {
+          const meta = SERVICE_META[s];
+          const Icon = meta?.icon;
+          return (
+            <span
+              key={s}
+              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs ${SERVICE_CHIP[s]}`}
+            >
+              {Icon && <Icon className="h-3 w-3" />}
+              {meta?.label ?? s}
+            </span>
+          );
+        })}
+        {(w.acceptedSpecies ?? []).includes("cat") && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-accent-subtle px-3 py-1 text-xs text-link">
+            <Cat className="h-3 w-3" /> Cares for cats
           </span>
-        ))}
+        )}
         {w.subscriptionTier && (
           <span className="rounded-full bg-accent-subtle px-3 py-1 text-xs capitalize text-link">
             {w.subscriptionTier}
@@ -89,11 +119,13 @@ function ProfileInner() {
 
       {w.bio && <p className="mt-5 text-sm leading-relaxed text-foreground">{w.bio}</p>}
 
+      <AmenityList amenities={w.amenities ?? []} />
+
       <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-md">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Starting from</p>
-            <p className="text-xl font-semibold">{w.priceFrom ? `$${w.priceFrom}` : "—"}<span className="text-sm font-normal text-muted-foreground">/walk</span></p>
+            <p className="text-xl font-semibold">{w.priceFrom ? `$${w.priceFrom}` : "—"}<span className="text-sm font-normal text-muted-foreground">/{w.priceFromUnit ?? "walk"}</span></p>
           </div>
           <Link
             href={routes.walkerBook(w.id)}

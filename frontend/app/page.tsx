@@ -9,7 +9,7 @@ import { ThemeToggle } from "../components/ui/ThemeToggle";
 
 const STEPS = [
   { n: "1", t: "Find a verified walker", d: "Browse trusted, ID-checked walkers and sitters near you, with real ratings." },
-  { n: "2", t: "Book in seconds", d: "Pick walk, daycare, or travel sitting. See a clear price before you confirm." },
+  { n: "2", t: "Book in seconds", d: "Pick a walk, daycare, boarding, or a drop-in visit. See a clear price before you confirm." },
   { n: "3", t: "Follow along", d: "Get photos and check-ins during every visit, and message your walker anytime." },
 ];
 
@@ -52,8 +52,8 @@ export default function LandingPage() {
             className="slk-rise mt-4 max-w-md text-base leading-relaxed text-muted-foreground"
             style={{ animationDelay: "0.16s" }}
           >
-            Walks, daycare, and travel sitting — all from one verified walker near you. Vetted,
-            insured, and tracked every step of the way.
+            Walks, daycare, boarding, and drop-in visits — all from one verified walker near
+            you. Vetted, insured, and tracked every step of the way.
           </p>
           <div className="slk-rise mt-7 flex flex-wrap gap-3" style={{ animationDelay: "0.24s" }}>
             <MagneticLink
@@ -107,9 +107,9 @@ export default function LandingPage() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1 text-[13px] font-medium text-foreground">
                     Sara K.
-                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-trust" fill="currentColor" aria-hidden="true">
-                      <path d="M12 2l2.4 1.8 3 .3 1 2.8 2 2.2-1 2.8.4 3-2.6 1.4-1.4 2.6-3-.4-2.8 1-2.2-2-2.8 1-1.4-2.6L4.2 15l.4-3-1-2.8 2-2.2 1-2.8 3-.3z" />
-                      <path d="M10.6 14.3l-1.9-1.9-1.1 1.1 3 3 5-5-1.1-1.1z" fill="hsl(var(--surface))" />
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-trust" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10" fill="currentColor" />
+                      <path d="M7.8 12.4l2.7 2.7 5.7-5.7" fill="none" stroke="hsl(var(--surface))" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </span>
                   <span className="block text-[11px] text-muted-foreground">0.4 mi away · 18 min in</span>
@@ -148,7 +148,7 @@ export default function LandingPage() {
         {[
           ["Verified & insured", "ID-checked walkers"],
           ["Live updates", "photos & check-ins"],
-          ["One trusted person", "walk, daycare & travel"],
+          ["One trusted person", "walks, daycare & boarding"],
         ].map(([t, d]) => (
           <div key={t} className="lift rounded-2xl border border-border bg-surface p-4 shadow-sm hover:shadow-md">
             <p className="text-sm font-medium">{t}</p>
@@ -201,9 +201,10 @@ export default function LandingPage() {
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-muted-foreground sm:flex-row">
           <span className="font-medium text-primary">Sidelick</span>
-          <nav className="flex gap-5">
+          <nav className="flex flex-wrap justify-center gap-5">
             <Link href={routes.signin} className="hover:text-foreground">Sign in</Link>
             <Link href={buildSignupPath("walker")} className="hover:text-foreground">Become a walker</Link>
+            <a href="mailto:support@sidelick.app" className="hover:text-foreground">Support</a>
           </nav>
           <span>© {new Date().getFullYear()} Sidelick</span>
         </div>
