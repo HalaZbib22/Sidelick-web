@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ok, notFoundError, unprocessable, conflict } from "../lib/response.js";
 import { query } from "../lib/db.js";
 import { listDisputes, resolveDispute } from "../lib/disputes.js";
+import { listPetReports, reviewPetReport } from "../lib/petReports.js";
 import { confirmManualReceipt } from "../lib/payments/service.js";
 import { notify } from "../lib/realtime.js";
 
@@ -78,6 +79,90 @@ adminRouter.get("/disputes", async (req, res) => {
   const status = req.query.status as string | undefined;
   const disputes = await listDisputes(status);
   return ok(res, { disputes });
+});
+
+// ---- Service debriefs (walker post-service reports; internal analytics) ----
+
+// GET /api/admin/debriefs — recent debriefs + aggregate stats.
+adminRouter.get("/debriefs", async (_req, res) => {
+  const stats = await query<{
+    submitted: number;
+    skipped: number;
+    avgOverall: number | null;
+    workAgainYesPct: number | null;
+    petMismatchPct: number | null;
+  }>(
+    `SELECT COUNT(*) FILTER (WHERE NOT skipped)::int                       AS "submitted",
+            COUNT(*) FILTER (WHERE skipped)::int                           AS "skipped",
+            ROUND(AVG(overall) FILTER (WHERE NOT skipped), 2)::float       AS "avgOverall",
+            ROUND(100.0 * COUNT(*) FILTER (WHERE work_again = 'yes')
+              / NULLIF(COUNT(*) FILTER (WHERE NOT skipped), 0), 0)::float  AS "workAgainYesPct",
+            ROUND(100.0 * COUNT(*) FILTER (WHERE pet_as_described <> 'yes' AND NOT skipped)
+              / NULLIF(COUNT(*) FILTER (WHERE NOT skipped), 0), 0)::float  AS "petMismatchPct"
+       FROM service_debriefs`
+  );
+  const debriefs = await query(
+    `SELECT sd.id, sd.booking_id AS "bookingId", sd.skipped, sd.overall,
+            sd.pet_as_described AS "petAsDescribed",
+            sd.owner_communication AS "ownerCommunication",
+            sd.handoff, sd.work_again AS "workAgain", sd.note,
+            sd.created_at AS "createdAt",
+            w.first_name || ' ' || left(w.last_name, 1) || '.' AS "walkerName",
+            o.first_name || ' ' || left(o.last_name, 1) || '.' AS "ownerName",
+            b.service_type AS "serviceType", b.start_at AS "startAt"
+       FROM service_debriefs sd
+       JOIN users w    ON w.id = sd.walker_id
+       JOIN bookings b ON b.id = sd.booking_id
+       JOIN users o    ON o.id = b.customer_id
+      WHERE NOT sd.skipped
+      ORDER BY sd.created_at DESC
+      LIMIT 100`
+  );
+  return ok(res, { stats: stats.rows[0], debriefs: debriefs.rows });
+});
+
+// ---- Pet reports (walker-filed pet-profile issues) ----
+
+// GET /api/admin/pet-reports?status=open|reviewed|dismissed
+adminRouter.get("/pet-reports", async (req, res) => {
+  const reports = await listPetReports(req.query.status as string | undefined);
+  return ok(res, { reports });
+});
+
+const reviewReportSchema = z.object({
+  action: z.enum(["reviewed", "dismissed"]),
+  note: z.string().max(1000).optional(),
+});
+
+// POST /api/admin/pet-reports/:id/review — mark founded (reviewed) or dismissed.
+adminRouter.post("/pet-reports/:id/review", async (req, res) => {
+  const parsed = reviewReportSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Choose an action for this report.", parsed.error.flatten());
+  }
+  const result = await reviewPetReport(
+    req.params.id,
+    parsed.data.action,
+    parsed.data.note?.trim() || undefined
+  );
+  if (!result.ok) {
+    if (result.code === "notfound") return notFoundError(res, result.message);
+    return conflict(res, result.message);
+  }
+  // Close the loop with the reporting walker.
+  await notify({
+    userId: result.report.reporterId,
+    type: "pet_report_reviewed",
+    title:
+      parsed.data.action === "reviewed"
+        ? "Your pet report was reviewed ✔"
+        : "Your pet report was closed",
+    body:
+      parsed.data.action === "reviewed"
+        ? `Thanks for flagging ${result.report.petName}'s profile — we've taken it from here.`
+        : `We looked into your report about ${result.report.petName} and closed it.`,
+  });
+  return ok(res, { report: result.report }, "Report updated");
 });
 
 // PATCH /api/admin/disputes/:id/resolve — decide a dispute (refund / deny).

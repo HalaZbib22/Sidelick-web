@@ -58,6 +58,7 @@ export interface NotificationInput {
     | "payment_received"
     | "dispute_opened"
     | "dispute_resolved"
+    | "pet_report_reviewed"
     | "promo";
   title: string;
   body?: string;
@@ -79,6 +80,7 @@ export const TYPE_CATEGORY: Record<NotificationInput["type"], NotificationCatego
   payment_received: "booking_updates",
   dispute_opened: "booking_updates",
   dispute_resolved: "booking_updates",
+  pet_report_reviewed: "booking_updates",
   review_received: "reviews",
   booking_expired: "reminders",
   promo: "reminders",

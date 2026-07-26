@@ -38,6 +38,8 @@ CREATE TABLE users (
 
     -- Walker-only fields (null for owners)
     service_types          JSONB DEFAULT '[]'::jsonb,  -- e.g. ["walk"], ["sit"], ["walk","sit"]
+    amenities              JSONB NOT NULL DEFAULT '[]'::jsonb,  -- fixed taxonomy, validated in code
+    accepted_species       JSONB NOT NULL DEFAULT '["dog"]'::jsonb,  -- which species the walker cares for
     subscription_tier      TEXT CHECK (subscription_tier IN ('starter', 'pro', 'elite')),
     verification_doc_url    TEXT,
     verification_doc_type   TEXT CHECK (verification_doc_type IN ('national_id', 'drivers_license', 'passport')),
@@ -58,8 +60,10 @@ CREATE TABLE users (
 
     CONSTRAINT oauth_pair CHECK ((oauth_provider IS NULL) = (oauth_id IS NULL))
 );
-CREATE INDEX idx_users_role     ON users (role);
-CREATE INDEX idx_users_location ON users (latitude, longitude);
+CREATE INDEX idx_users_role      ON users (role);
+CREATE INDEX idx_users_location  ON users (latitude, longitude);
+CREATE INDEX idx_users_amenities ON users USING GIN (amenities jsonb_path_ops);
+CREATE INDEX idx_users_accepted_species ON users USING GIN (accepted_species jsonb_path_ops);
 
 -- ============================================================
 -- PETS
@@ -69,6 +73,7 @@ CREATE TABLE pets (
     owner_id            UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
 
     name                TEXT NOT NULL,
+    species             TEXT NOT NULL DEFAULT 'dog' CHECK (species IN ('dog', 'cat')),
     breed               TEXT,
     age_years           INT CHECK (age_years BETWEEN 0 AND 30),
     size                TEXT CHECK (size IN ('small', 'medium', 'large')),
@@ -150,7 +155,9 @@ CREATE TABLE bookings (
     series_id           UUID REFERENCES booking_series (id) ON DELETE SET NULL,
     series_index        INT,
 
-    service_type        TEXT NOT NULL CHECK (service_type IN ('walk', 'sit', 'walk_sit')),
+    -- 'sit'/'walk_sit' are legacy values kept for pre-catalog rows; new bookings
+    -- use walk | daycare | boarding | drop_in.
+    service_type        TEXT NOT NULL CHECK (service_type IN ('walk', 'daycare', 'boarding', 'drop_in', 'sit', 'walk_sit')),
     status              TEXT NOT NULL DEFAULT 'draft'
                             CHECK (status IN ('draft', 'requested', 'accepted',
                                               'in_progress', 'completed', 'declined',
@@ -177,6 +184,7 @@ CREATE TABLE bookings (
     actual_end_at       TIMESTAMPTZ,
     ended_early         BOOLEAN NOT NULL DEFAULT false,  -- finished meaningfully short of booked duration
     missed_mid_photo    BOOLEAN NOT NULL DEFAULT false,  -- no halfway photo captured during the walk
+    pets_confirmed_at   TIMESTAMPTZ,                     -- walker confirmed the pets match their profiles
 
     -- Price lock (planning_v2 §3.1)
     currency            TEXT NOT NULL DEFAULT 'USD'
@@ -216,7 +224,7 @@ CREATE TABLE booking_segments (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     booking_id        UUID NOT NULL REFERENCES bookings (id) ON DELETE CASCADE,
 
-    segment_type      TEXT NOT NULL CHECK (segment_type IN ('walk', 'sit')),
+    segment_type      TEXT NOT NULL CHECK (segment_type IN ('walk', 'daycare', 'boarding', 'drop_in', 'sit')),
     start_at          TIMESTAMPTZ NOT NULL,
     end_at            TIMESTAMPTZ NOT NULL,
     location_type     TEXT NOT NULL CHECK (location_type IN ('customer_home', 'walker_home')),
@@ -337,7 +345,10 @@ CREATE TABLE platform_pricing_config (
     currency             TEXT NOT NULL DEFAULT 'USD'
                              CHECK (currency IN ('USD', 'LBP', 'AED', 'SAR')),
     base_walk_rate       NUMERIC(10, 2) NOT NULL,     -- per hour, in `currency`
-    base_sit_rate        NUMERIC(10, 2) NOT NULL,     -- per hour, in `currency`
+    base_sit_rate        NUMERIC(10, 2) NOT NULL,     -- legacy (pre-catalog 'sit'), per hour
+    base_daycare_rate    NUMERIC(10, 2),              -- per day
+    base_boarding_rate   NUMERIC(10, 2),              -- per night
+    base_drop_in_rate    NUMERIC(10, 2),              -- per 30-min visit
     tier_multipliers     JSONB NOT NULL DEFAULT '{"starter":1.0,"pro":1.1,"elite":1.2}'::jsonb,
 
     distance_threshold_km NUMERIC(6, 2) NOT NULL DEFAULT 0,
@@ -501,7 +512,7 @@ CREATE TABLE notifications (
                     'booking_requested', 'booking_accepted', 'booking_declined',
                     'booking_cancelled', 'booking_expired', 'walk_started', 'walk_completed',
                     'review_received', 'payment_received', 'promo',
-                    'dispute_opened', 'dispute_resolved'
+                    'dispute_opened', 'dispute_resolved', 'pet_report_reviewed'
                 )),
     title       TEXT NOT NULL,
     body        TEXT,
@@ -534,6 +545,71 @@ CREATE TABLE push_subscriptions (
     last_used_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_push_subs_user ON push_subscriptions (user_id);
+
+-- ============================================================
+-- PET REPORTS  (walker flags pet-profile inaccuracies; admin reviews)
+-- The walker-side mirror of disputes: undisclosed behavior/health,
+-- profile mismatch, wrong pet. One open report per pet per booking.
+-- ============================================================
+CREATE TABLE pet_reports (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id   UUID NOT NULL REFERENCES bookings (id) ON DELETE CASCADE,
+    pet_id       UUID NOT NULL REFERENCES pets (id) ON DELETE CASCADE,
+    reporter_id  UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,  -- the walker
+
+    category     TEXT NOT NULL CHECK (category IN (
+                     'profile_mismatch', 'behavior_undisclosed',
+                     'health_undisclosed', 'wrong_pet', 'other'
+                 )),
+    note         TEXT CHECK (char_length(note) <= 1000),
+
+    status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewed', 'dismissed')),
+    admin_note   TEXT CHECK (char_length(admin_note) <= 1000),
+
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at  TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX uq_pet_reports_open ON pet_reports (booking_id, pet_id) WHERE status = 'open';
+CREATE INDEX idx_pet_reports_status ON pet_reports (status, created_at DESC);
+CREATE INDEX idx_pet_reports_pet    ON pet_reports (pet_id);
+
+-- ============================================================
+-- SERVICE DEBRIEFS  (walker's internal post-service report — admin-only)
+-- Structured categorical answers for analytics; skip recorded to avoid
+-- re-prompting. Owners never see these.
+-- ============================================================
+CREATE TABLE service_debriefs (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id          UUID NOT NULL UNIQUE REFERENCES bookings (id) ON DELETE CASCADE,
+    walker_id           UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+
+    skipped             BOOLEAN NOT NULL DEFAULT false,
+
+    overall             INT CHECK (overall BETWEEN 1 AND 5),
+    pet_as_described    TEXT CHECK (pet_as_described IN ('yes', 'mostly', 'no')),
+    owner_communication TEXT CHECK (owner_communication IN ('great', 'fine', 'difficult')),
+    handoff             TEXT CHECK (handoff IN ('smooth', 'minor_issues', 'problematic')),
+    work_again          TEXT CHECK (work_again IN ('yes', 'maybe', 'no')),
+    note                TEXT CHECK (char_length(note) <= 1000),
+
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_service_debriefs_walker  ON service_debriefs (walker_id, created_at DESC);
+CREATE INDEX idx_service_debriefs_created ON service_debriefs (created_at DESC);
+
+-- ============================================================
+-- FAVORITES  (owner bookmarks a walker for next time)
+-- One row per (owner, walker) pair; unfavoriting deletes the row.
+-- ============================================================
+CREATE TABLE favorites (
+    user_id     UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,  -- the owner who saved
+    walker_id   UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,  -- the saved walker
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (user_id, walker_id),
+    CONSTRAINT no_self_favorite CHECK (user_id <> walker_id)
+);
+CREATE INDEX idx_favorites_walker ON favorites (walker_id);
 
 -- ============================================================
 -- updated_at trigger

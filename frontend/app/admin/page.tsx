@@ -8,6 +8,8 @@ import { Button } from "../../components/ui/Button";
 import { Skeleton, ListSkeleton } from "../../components/ui/Skeleton";
 import { ProtectedImage } from "../../components/ui/ProtectedImage";
 import { DisputeQueue } from "../../components/admin/DisputeQueue";
+import { PetReportQueue } from "../../components/admin/PetReportQueue";
+import { DebriefLog } from "../../components/admin/DebriefLog";
 import { PaymentQueue } from "../../components/admin/PaymentQueue";
 import { apiFetch } from "../../lib/api";
 import { api } from "../../lib/paths";
@@ -153,12 +155,14 @@ function VerificationsQueue() {
   );
 }
 
-type AdminTab = "verifications" | "payments" | "disputes";
+type AdminTab = "verifications" | "payments" | "disputes" | "petReports" | "debriefs";
 
 const TABS: { key: AdminTab; label: string }[] = [
   { key: "verifications", label: "Verifications" },
   { key: "payments", label: "Payments" },
   { key: "disputes", label: "Disputes" },
+  { key: "petReports", label: "Pet reports" },
+  { key: "debriefs", label: "Debriefs" },
 ];
 
 function AdminInner() {
@@ -190,8 +194,12 @@ function AdminInner() {
         <VerificationsQueue />
       ) : tab === "payments" ? (
         <PaymentQueue />
-      ) : (
+      ) : tab === "disputes" ? (
         <DisputeQueue />
+      ) : tab === "petReports" ? (
+        <PetReportQueue />
+      ) : (
+        <DebriefLog />
       )}
     </main>
   );

@@ -25,6 +25,9 @@ export const routes = {
   messages: "/messages",
 } as const;
 
+/** Customer-facing support address (aliases: payments@, safety@ route here). */
+export const SUPPORT_EMAIL = "support@sidelick.app";
+
 const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 /** Socket.IO server origin (same host as the API, no /api prefix). */
@@ -48,6 +51,9 @@ export const api = {
   adminDisputes: `${base}/api/admin/disputes`,
   adminResolveDispute: (id: string) => `${base}/api/admin/disputes/${id}/resolve`,
   adminPendingPayments: `${base}/api/admin/payments/pending`,
+  adminPetReports: `${base}/api/admin/pet-reports`,
+  adminDebriefs: `${base}/api/admin/debriefs`,
+  adminReviewPetReport: (id: string) => `${base}/api/admin/pet-reports/${id}/review`,
   adminConfirmPayment: (bookingId: string) =>
     `${base}/api/admin/payments/${bookingId}/confirm`,
   // pets
@@ -57,6 +63,7 @@ export const api = {
   walkers: `${base}/api/walkers`,
   walker: (id: string) => `${base}/api/walkers/${id}`,
   walkerAvailability: (id: string) => `${base}/api/walkers/${id}/availability`,
+  walkerFavorite: (id: string) => `${base}/api/walkers/${id}/favorite`,
   // bookings
   bookingQuote: `${base}/api/bookings/quote`,
   bookings: `${base}/api/bookings`,
@@ -68,6 +75,10 @@ export const api = {
   bookingPhotoFile: (id: string, checkpoint: "start" | "mid" | "end") =>
     `${base}/api/bookings/${id}/photos/${checkpoint}/file`,
   bookingDispute: (id: string) => `${base}/api/bookings/${id}/dispute`,
+  bookingConfirmPets: (id: string) => `${base}/api/bookings/${id}/confirm-pets`,
+  bookingPetReport: (id: string) => `${base}/api/bookings/${id}/pet-report`,
+  bookingPetReports: (id: string) => `${base}/api/bookings/${id}/pet-reports`,
+  bookingDebrief: (id: string) => `${base}/api/bookings/${id}/debrief`,
   // payments
   paymentConfig: `${base}/api/payments/config`,
   bookingPayment: (id: string) => `${base}/api/payments/bookings/${id}`,

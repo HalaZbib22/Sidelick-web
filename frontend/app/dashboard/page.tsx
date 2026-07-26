@@ -39,8 +39,11 @@ function greeting(): string {
 
 const SERVICE_LABEL: Record<BookingServiceType, string> = {
   walk: "Dog walk",
-  sit: "Sitting",
-  walk_sit: "Walk + sitting",
+  daycare: "Daycare",
+  boarding: "Boarding",
+  drop_in: "Drop-in visit",
+  sit: "Sitting",          // legacy
+  walk_sit: "Walk + sitting", // legacy
 };
 
 const ACTIVE: BookingStatus[] = ["requested", "accepted", "in_progress"];
@@ -416,7 +419,7 @@ function subFor(me: Me): string {
     if (me.verificationStatus === "rejected") return "One quick fix and you'll be back on track.";
     return "A few steps left to start accepting bookings.";
   }
-  return "Everything for your dogs, in one place.";
+  return "Everything for your pets, in one place.";
 }
 
 function WalkerBody({ me }: { me: Me }) {

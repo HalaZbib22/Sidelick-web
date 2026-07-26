@@ -9,7 +9,7 @@ export const petsRouter = Router();
 
 // Columns aliased to camelCase so the API speaks the frontend's language.
 const SELECT_COLS = `
-  id, name, breed,
+  id, name, species, breed,
   age_years        AS "ageYears",
   size,
   weight_kg        AS "weightKg",
@@ -21,6 +21,7 @@ const SELECT_COLS = `
 
 const petSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
+  species: z.enum(["dog", "cat"]).default("dog"),
   breed: z.string().trim().max(50).optional().nullable(),
   ageYears: z.coerce.number().int().min(0).max(30).optional().nullable(),
   size: z.enum(["small", "medium", "large"]).optional().nullable(),
@@ -59,12 +60,13 @@ petsRouter.post("/", async (req, res) => {
   }
   const p = parsed.data;
   const result = await query(
-    `INSERT INTO pets (owner_id, name, breed, age_years, size, weight_kg, friendly_with_pets, notes, photo_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO pets (owner_id, name, species, breed, age_years, size, weight_kg, friendly_with_pets, notes, photo_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING ${SELECT_COLS}`,
     [
       req.user!.userId,
       p.name,
+      p.species,
       p.breed ?? null,
       p.ageYears ?? null,
       p.size ?? null,
@@ -96,6 +98,7 @@ petsRouter.patch("/:id", async (req, res) => {
   // Build a dynamic SET clause from provided fields only.
   const map: Record<string, string> = {
     name: "name",
+    species: "species",
     breed: "breed",
     ageYears: "age_years",
     size: "size",
