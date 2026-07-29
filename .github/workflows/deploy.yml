@@ -6,6 +6,11 @@ on:
       - main
       - develop
   workflow_dispatch:
+    inputs:
+      no_cache:
+        description: 'Build images without cache (force clean rebuild)'
+        type: boolean
+        default: false
 
 env:
   REGISTRY_IMAGE: sidelick
@@ -34,8 +39,9 @@ jobs:
           file: ./frontend/Dockerfile
           tags: ${{ env.REGISTRY_IMAGE }}-frontend:latest
           outputs: type=docker,dest=/tmp/frontend-image.tar
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
+          no-cache: ${{ inputs.no_cache == true }}
+          cache-from: ${{ inputs.no_cache == true && ' ' || 'type=gha,scope=frontend' }}
+          cache-to: ${{ inputs.no_cache == true && ' ' || 'type=gha,mode=max,scope=frontend' }}
           build-args: |
             BUILDKIT_INLINE_CACHE=1
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
@@ -47,8 +53,9 @@ jobs:
           file: ./backend/Dockerfile
           tags: ${{ env.REGISTRY_IMAGE }}-backend:latest
           outputs: type=docker,dest=/tmp/backend-image.tar
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          no-cache: ${{ inputs.no_cache == true }}
+          cache-from: ${{ inputs.no_cache == true && ' ' || 'type=gha,scope=backend' }}
+          cache-to: ${{ inputs.no_cache == true && ' ' || 'type=gha,mode=max,scope=backend' }}
           build-args: |
             BUILDKIT_INLINE_CACHE=1
 
