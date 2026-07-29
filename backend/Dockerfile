@@ -48,8 +48,8 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 expressjs
 
 # Create directories that the app needs to write to
-RUN mkdir -p /app/private_uploads && \
-    chown -R expressjs:nodejs /app/private_uploads
+RUN mkdir -p /app/private_uploads /app/public_uploads && \
+    chown -R expressjs:nodejs /app/private_uploads /app/public_uploads
 
 USER expressjs
 
