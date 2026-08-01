@@ -2,6 +2,10 @@
 
 import { useId } from "react";
 import PhoneInput from "react-phone-number-input";
+// Bundled inline-SVG flags — the library's default loads flag images from a
+// third-party CDN (purecatamphetamine.github.io), which our CSP rightly
+// blocks and which we shouldn't depend on anyway.
+import flags from "react-phone-number-input/flags";
 import "react-phone-number-input/style.css";
 import { Label } from "./Label";
 import { cn } from "../../lib/utils";
@@ -25,6 +29,7 @@ export function PhoneField({ label, value, onChange, error, helperText }: PhoneF
       <div className={cn("slk-phone", error && "slk-phone-error")}>
         <PhoneInput
           id={id}
+          flags={flags}
           international
           defaultCountry="LB"
           placeholder="Phone number"
