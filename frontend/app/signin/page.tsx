@@ -26,8 +26,8 @@ export default function SignInPage() {
   // alone auto-dismisses; this banner stays until the next attempt so the user
   // always sees why sign-in failed.
   const [authError, setAuthError] = useState<string | null>(null);
-  // "Remember me": on → token persists across restarts (localStorage);
-  // off → session-only (sessionStorage), cleared when the browser closes.
+  // "Remember me": on → persistent 7-day cookie; off → session cookie that
+  // dies when the browser closes. (The server sets it httpOnly either way.)
   const [remember, setRemember] = useState(true);
 
   const form = useForm<SignInValues>({
@@ -42,11 +42,14 @@ export default function SignInPage() {
     },
     onSubmit: async (values) => {
       setAuthError(null);
-      const { token } = await apiFetch<{ token: string }>(api.signin, {
-        method: "POST",
-        body: JSON.stringify(values),
-      });
-      signIn(token, remember);
+      const { user } = await apiFetch<{ user: { id: string; role: "user" | "walker" | "admin" } }>(
+        api.signin,
+        {
+          method: "POST",
+          body: JSON.stringify({ ...values, remember }),
+        }
+      );
+      signIn(user);
       toast.success("Signed in successfully!");
       router.push(routes.dashboard);
     },

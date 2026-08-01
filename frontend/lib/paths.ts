@@ -37,6 +37,7 @@ export const api = {
   // auth
   signup: `${base}/api/auth/signup`,
   signin: `${base}/api/auth/signin`,
+  logout: `${base}/api/auth/logout`,
   forgotPassword: `${base}/api/auth/forgot-password`,
   resetPassword: `${base}/api/auth/reset-password`,
   me: `${base}/api/me`,

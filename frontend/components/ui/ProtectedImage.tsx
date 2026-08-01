@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getToken } from "../../lib/auth";
 import { cn } from "../../lib/utils";
 
 /**
- * Renders an auth-protected image. The backend serves these behind a Bearer
- * token, which an <img src> can't send — so we fetch the bytes as a blob and
- * hand the <img> an object URL instead.
+ * Renders an auth-protected image. The backend serves these behind the
+ * httpOnly session cookie; we fetch the bytes with credentials and hand the
+ * <img> an object URL.
  */
 export function ProtectedImage({
   url,
@@ -27,10 +26,7 @@ export function ProtectedImage({
     setFailed(false);
     (async () => {
       try {
-        const token = getToken();
-        const res = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
+        const res = await fetch(url, { credentials: "include" });
         if (!res.ok) throw new Error();
         const blob = await res.blob();
         objectUrl = URL.createObjectURL(blob);

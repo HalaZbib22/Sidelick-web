@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     template: "%s · Sidelick",
   },
   description:
-    "Book verified dog walkers and sitters — walks, daycare, and travel sitting from one trusted person. Serving Beirut and the Gulf.",
+    "Book verified pet care — walks, daycare, boarding, and drop-in visits from one trusted person. Serving Lebanon and the Gulf.",
   applicationName: "Sidelick",
   manifest: "/manifest.json",
   keywords: [
@@ -36,6 +36,7 @@ export const metadata: Metadata = {
     "pet care",
     "dog daycare",
     "dog walker Beirut",
+    "dog walker Lebanon",
     "pet sitting Lebanon",
     "verified dog walkers",
   ],
@@ -47,21 +48,21 @@ export const metadata: Metadata = {
     url: siteUrl,
     title: "Sidelick — Trusted dog walking & sitting",
     description:
-      "Walks, daycare, and travel sitting from one verified person. Serving Beirut and the Gulf.",
+      "Walks, daycare, boarding, and drop-in visits from one verified person. Serving Lebanon and the Gulf.",
     images: [
       {
-        url: "/icons/icon-512.png",
-        width: 512,
-        height: 512,
-        alt: "Sidelick",
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Sidelick — Loved by your dog. Trusted by you.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Sidelick — Trusted dog walking & sitting",
-    description: "Walks, daycare, and travel sitting from one verified person.",
-    images: ["/icons/icon-512.png"],
+    description: "Walks, daycare, boarding, and drop-in visits from one verified person.",
+    images: ["/og.png"],
   },
   robots: {
     index: true,
@@ -71,7 +72,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f766e",
+  themeColor: "#fbf6f1",
   width: "device-width",
   initialScale: 1,
 };

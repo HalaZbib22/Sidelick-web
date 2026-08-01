@@ -52,8 +52,9 @@ CREATE TABLE users (
     max_pack_size          INT CHECK (max_pack_size BETWEEN 1 AND 4),    -- walks; ≤ platform cap
     max_boarding_pets      INT CHECK (max_boarding_pets BETWEEN 1 AND 3), -- sit @ walker_home; ≤ platform cap
 
-    password_reset_token    TEXT,
+    password_reset_token    TEXT,                       -- sha256 hash of the token, never plaintext
     password_reset_expires  TIMESTAMPTZ,
+    password_changed_at     TIMESTAMPTZ,                -- JWTs issued before this are rejected
 
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),

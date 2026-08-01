@@ -36,11 +36,11 @@ export function useNotifications() {
     staleTime: 30_000,
   });
 
-  // Live channel: connect with the JWT, prepend incoming notifications.
+  // Live channel: the httpOnly session cookie rides the handshake request.
   useEffect(() => {
     if (!session) return;
     const socket = io(socketUrl, {
-      auth: { token: session.token },
+      withCredentials: true,
       transports: ["websocket"],
     });
     socketRef.current = socket;
