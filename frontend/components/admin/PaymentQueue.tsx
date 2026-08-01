@@ -2,11 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { HandCoins } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Skeleton, ListSkeleton } from "../ui/Skeleton";
 import { apiFetch } from "../../lib/api";
 import { api } from "../../lib/paths";
 import { getApiErrorMessage } from "../../lib/forms";
+import { useAdminSettlements, useReviewSettlement } from "../../hooks/useSettlements";
 
 interface PendingPayment {
   bookingId: string;
@@ -105,6 +107,78 @@ export function PaymentQueue() {
           ))}
         </div>
       )}
+
+      <SettlementQueue />
     </>
+  );
+}
+
+/** Walker cash-commission settlements awaiting confirmation. */
+function SettlementQueue() {
+  const { data: settlements, isLoading } = useAdminSettlements("pending");
+  const review = useReviewSettlement();
+
+  function act(id: string, action: "confirm" | "reject") {
+    review.mutate(
+      { id, action },
+      {
+        onSuccess: () =>
+          toast.success(action === "confirm" ? "Settlement confirmed — balance cleared" : "Settlement rejected"),
+        onError: (e) => toast.error(getApiErrorMessage(e)),
+      }
+    );
+  }
+
+  return (
+    <div className="mt-8">
+      <h3 className="font-display mb-1 flex items-center gap-2 text-lg font-medium">
+        <HandCoins className="h-4 w-4 text-warning" /> Commission settlements
+      </h3>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Walkers paying off their cash-commission balance. Confirm once the money lands —
+        that clears their ledger and unblocks bookings.
+      </p>
+
+      {isLoading ? (
+        <ListSkeleton count={2}>
+          <div className="h-20 rounded-xl border border-border bg-surface" />
+        </ListSkeleton>
+      ) : !settlements || settlements.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          No settlements awaiting confirmation.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {settlements.map((s) => (
+            <div key={s.id} className="rounded-xl border border-border bg-surface p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {money(s.currency, String(s.amount))} · {PROVIDER_LABEL[s.method]}
+                  </p>
+                  <p className="text-sm text-muted-foreground">from {s.walkerName}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Ref <span className="font-mono">{s.reference}</span> · opened{" "}
+                    {new Date(s.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button onClick={() => act(s.id, "confirm")} disabled={review.isPending}>
+                    Confirm
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => act(s.id, "reject")}
+                    disabled={review.isPending}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

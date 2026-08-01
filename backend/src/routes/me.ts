@@ -3,10 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 import { z } from "zod";
-import { ok, notFoundError, unprocessable } from "../lib/response.js";
+import { ok, notFoundError, unprocessable, conflict } from "../lib/response.js";
 import { query, pool } from "../lib/db.js";
 import { activeProvider } from "../lib/verification.js";
 import { AMENITY_IDS } from "../lib/amenities.js";
+import {
+  SETTLEMENT_RAILS,
+  createSettlement,
+  debtBlockThreshold,
+  getCashDebt,
+  pendingSettlement,
+} from "../lib/payments/settlements.js";
 
 // Mounted behind requireAuth — every route here has req.user.
 export const meRouter = Router();
@@ -126,6 +133,42 @@ meRouter.put("/availability", async (req, res) => {
     client.release();
   }
   return ok(res, { saved: true }, "Availability saved");
+});
+
+// ---- Cash-commission balance & settlement (walker-facing) ----
+
+// GET /api/me/cash-balance — what the walker owes, the block threshold, and
+// any in-flight settlement.
+meRouter.get("/cash-balance", async (req, res) => {
+  const uid = req.user!.userId;
+  const [balances, threshold, pending] = await Promise.all([
+    getCashDebt(uid),
+    debtBlockThreshold(),
+    pendingSettlement(uid),
+  ]);
+  const usd = balances.find((b) => b.currency === "USD")?.amount ?? 0;
+  return ok(res, {
+    balances,
+    threshold,
+    blocked: usd >= threshold,
+    pendingSettlement: pending,
+  });
+});
+
+const settlementSchema = z.object({ method: z.enum(SETTLEMENT_RAILS) });
+
+// POST /api/me/settlements — open a settlement for the full USD balance.
+meRouter.post("/settlements", async (req, res) => {
+  const parsed = settlementSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Choose how you'll send the payment.", parsed.error.flatten());
+  }
+  const result = await createSettlement(req.user!.userId, parsed.data.method);
+  if (!result.ok) {
+    if (result.code === "conflict") return conflict(res, result.message);
+    return unprocessable(res, result.message);
+  }
+  return ok(res, { settlement: result.settlement }, "Settlement opened — send the payment quoting your reference.", 201);
 });
 
 // ---- Identity verification (private upload) ----

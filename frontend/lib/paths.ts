@@ -43,6 +43,8 @@ export const api = {
   meWalkerProfile: `${base}/api/me/walker-profile`,
   meAvailability: `${base}/api/me/availability`,
   meVerification: `${base}/api/me/verification`,
+  meCashBalance: `${base}/api/me/cash-balance`,
+  meSettlements: `${base}/api/me/settlements`,
   // admin
   adminUsers: `${base}/api/admin/users`,
   adminVerify: (id: string) => `${base}/api/admin/users/${id}/verify`,
@@ -53,6 +55,8 @@ export const api = {
   adminPendingPayments: `${base}/api/admin/payments/pending`,
   adminPetReports: `${base}/api/admin/pet-reports`,
   adminDebriefs: `${base}/api/admin/debriefs`,
+  adminSettlements: `${base}/api/admin/settlements`,
+  adminReviewSettlement: (id: string) => `${base}/api/admin/settlements/${id}/review`,
   adminReviewPetReport: (id: string) => `${base}/api/admin/pet-reports/${id}/review`,
   adminConfirmPayment: (bookingId: string) =>
     `${base}/api/admin/payments/${bookingId}/confirm`,

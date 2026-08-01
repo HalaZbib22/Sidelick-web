@@ -219,6 +219,36 @@ export interface DebriefStats {
   petMismatchPct: number | null;
 }
 
+// ---- Cash-commission settlement (walker owes platform for cash bookings) ----
+
+export type SettlementRail = "whish" | "omt" | "bob";
+export type SettlementStatus = "pending" | "confirmed" | "rejected";
+
+export interface Settlement {
+  id: string;
+  walkerId: string;
+  amount: number | string;
+  currency: string;
+  method: SettlementRail;
+  reference: string;
+  destination: string | null;
+  status: SettlementStatus;
+  adminNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface AdminSettlement extends Settlement {
+  walkerName: string;
+}
+
+export interface CashBalance {
+  balances: { currency: string; amount: number }[];
+  threshold: number;
+  blocked: boolean;
+  pendingSettlement: Settlement | null;
+}
+
 /** Admin-queue view of a pet report (joined context). */
 export interface AdminPetReport extends PetReport {
   petName: string;

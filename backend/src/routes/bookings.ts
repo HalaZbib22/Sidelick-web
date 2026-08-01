@@ -20,6 +20,7 @@ import {
   filePetReport,
   listReportsForBooking,
 } from "../lib/petReports.js";
+import { isDebtBlocked } from "../lib/payments/settlements.js";
 
 // Mounted behind requireAuth.
 export const bookingsRouter = Router();
@@ -584,8 +585,15 @@ async function authorizeWalkerTransition(id: string, uid: string, from: string[]
 // Bookings ending before this fraction of the booked duration are flagged for review.
 const EARLY_COMPLETION_THRESHOLD = 0.9;
 
-// Walker accepts — must be a VERIFIED walker.
+// Walker accepts — must be a VERIFIED walker with cash-commission debt under
+// the block threshold (the settle-up gate; see lib/payments/settlements.ts).
 bookingsRouter.post("/:id/accept", requireVerifiedWalker, async (req, res) => {
+  if (await isDebtBlocked(req.user!.userId)) {
+    return conflict(
+      res,
+      "Your cash-commission balance has reached its limit. Settle up from your dashboard to keep accepting bookings."
+    );
+  }
   const r = await transition(req.params.id, req.user!.userId, "walker", ["requested"], "accepted");
   const err = handleTransition(res, r);
   if (err) return err;

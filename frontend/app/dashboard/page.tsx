@@ -18,6 +18,7 @@ import { Protected } from "../../components/auth/Protected";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useMe } from "../../hooks/useMe";
 import { useBookings } from "../../hooks/useBookings";
+import { CashDebtCard } from "../../components/dashboard/CashDebtCard";
 import { usePets } from "../../hooks/usePets";
 import { routes } from "../../lib/paths";
 import { cn } from "../../lib/utils";
@@ -305,6 +306,9 @@ function WalkerVerified() {
 
   return (
     <div className="space-y-6">
+      {/* Cash-commission balance — renders only when the walker owes something. */}
+      <CashDebtCard />
+
       <div className="grid grid-cols-3 gap-3">
         <StatTile icon={Inbox} value={isLoading ? "—" : String(requests.length)} label="Requests" tone="primary" />
         <StatTile icon={CalendarDays} value={isLoading ? "—" : String(upcoming.length)} label="Upcoming" tone="trust" />
