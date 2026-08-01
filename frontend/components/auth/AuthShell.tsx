@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { routes } from "../../lib/paths";
+import { Logo } from "../brand/Logo";
 
 interface AuthShellProps {
   title: string;
@@ -11,8 +12,8 @@ interface AuthShellProps {
 export function AuthShell({ title, subtitle, children, footer }: AuthShellProps) {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-      <Link href={routes.home} className="font-display mb-8 text-center text-2xl font-semibold text-primary">
-        Sidelick
+      <Link href={routes.home} className="mb-8 self-center">
+        <Logo className="text-2xl" />
       </Link>
       <div className="rounded-2xl border border-border bg-surface p-6 shadow-md">
         <h1 className="font-display text-3xl font-semibold">{title}</h1>
