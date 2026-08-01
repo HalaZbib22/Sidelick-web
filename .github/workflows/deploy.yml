@@ -33,7 +33,7 @@ jobs:
       # Build frontend and backend in parallel using matrix would be ideal,
       # but we'll use background jobs for parallelization
       - name: Build Frontend Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
@@ -47,7 +47,7 @@ jobs:
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
 
       - name: Build Backend Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./backend/Dockerfile
