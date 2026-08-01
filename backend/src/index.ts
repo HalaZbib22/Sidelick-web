@@ -5,6 +5,12 @@ import "express-async-errors";
 import cors from "cors";
 import { timing, notFound, errorHandler } from "./middleware/error.js";
 import { requireAuth, requireRole } from "./middleware/auth.js";
+import {
+  securityHeaders,
+  rateLimit,
+  originCheck,
+  allowedOrigins,
+} from "./middleware/security.js";
 import { initRealtime } from "./lib/realtime.js";
 import { startExpirySweeper } from "./lib/expiry.js";
 import { checkMigrations } from "./lib/migrations.js";
@@ -24,27 +30,57 @@ import { uploadsRouter, publicUploadDir } from "./routes/uploads.js";
 
 const app = express();
 
+// Behind a reverse proxy (Docker/host LB) — trust exactly one hop so req.ip
+// reflects the real client for rate limiting, not the proxy.
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
 app.use(timing);
+app.use(securityHeaders);
 app.use(
   cors({
-    origin: (process.env.CORS_ORIGIN ?? "http://localhost:3000").split(","),
+    origin: allowedOrigins(),
+    credentials: true, // required for the httpOnly session cookie
   })
 );
+app.use(originCheck);
 // Stripe webhook needs the raw body for signature verification, so it must be
 // mounted BEFORE express.json() parses (and discards) the raw bytes.
 app.post("/api/payments/webhook", ...paymentsWebhookHandler);
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+
+// Global backstop limiter, then a much stricter one on credential endpoints
+// (brute force / credential stuffing) and password resets (email spam).
+app.use(rateLimit({ name: "api", windowMs: 60_000, max: 300 }));
+const authLimiter = rateLimit({ name: "auth", windowMs: 15 * 60_000, max: 20 });
+const forgotLimiter = rateLimit({ name: "forgot", windowMs: 60 * 60_000, max: 5 });
 
 // Routes
 app.use("/api/health", healthRouter);
+app.use("/api/auth/forgot-password", forgotLimiter);
+app.use("/api/auth/signin", authLimiter);
+app.use("/api/auth/signup", authLimiter);
+app.use("/api/auth/reset-password", authLimiter);
 app.use("/api/auth", authRouter);
 // Auth-gated (401 if no/invalid token)
 app.use("/api/me", requireAuth, meRouter);
 app.use("/api/pets", requireAuth, petsRouter);
 app.use("/api/upload", requireAuth, uploadsRouter);
 // Uploaded images (pet photos) — public static, URLs safe for <img> tags.
-app.use("/uploads", express.static(publicUploadDir, { maxAge: "30d", immutable: true }));
+// nosniff + a sandboxing CSP make any smuggled non-image inert: nothing
+// served from here can ever execute scripts, even if validation is bypassed.
+app.use(
+  "/uploads",
+  express.static(publicUploadDir, {
+    maxAge: "30d",
+    immutable: true,
+    setHeaders: (res) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    },
+  })
+);
 app.use("/api/walkers", requireAuth, walkersRouter);
 app.use("/api/bookings", requireAuth, bookingsRouter);
 app.use("/api/reviews", requireAuth, reviewsRouter);

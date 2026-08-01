@@ -5,7 +5,7 @@ import { ok, notFoundError, unprocessable, forbidden, conflict } from "../lib/re
 import { query, pool } from "../lib/db.js";
 import { computeQuote, type QuoteInput, type Quote } from "../lib/pricing.js";
 import { requireVerifiedWalker } from "../middleware/auth.js";
-import { imageUpload, privateRef, resolvePrivateFile } from "../lib/uploads.js";
+import { imageUpload, privateRef, resolvePrivateFile, verifyImageMagicBytes } from "../lib/uploads.js";
 import { notify } from "../lib/realtime.js";
 import { RESPONSE_WINDOW_MINUTES } from "../lib/expiry.js";
 import {
@@ -668,6 +668,9 @@ bookingsRouter.post("/:id/cancel", async (req, res) => {
 // Starting a walk requires a photo of the pet — proof the walker is on-site.
 bookingsRouter.post("/:id/start", requireVerifiedWalker, photoUpload.single("photo"), async (req, res) => {
   if (!req.file) return unprocessable(res, "Please capture a photo of the pet to start the walk.");
+  if (!(await verifyImageMagicBytes(req.file.path, req.file.mimetype))) {
+    return unprocessable(res, "That file isn't a valid image.");
+  }
   const a = await authorizeWalkerTransition(req.params.id, req.user!.userId, ["accepted"]);
   const err = handleTransition(res, a);
   if (err) return err;
@@ -711,6 +714,9 @@ bookingsRouter.post("/:id/start", requireVerifiedWalker, photoUpload.single("pho
 // Optional halfway photo while the walk is in progress (prompted at the midpoint).
 bookingsRouter.post("/:id/photo", requireVerifiedWalker, photoUpload.single("photo"), async (req, res) => {
   if (!req.file) return unprocessable(res, "Please capture a photo of the pet.");
+  if (!(await verifyImageMagicBytes(req.file.path, req.file.mimetype))) {
+    return unprocessable(res, "That file isn't a valid image.");
+  }
   const a = await authorizeWalkerTransition(req.params.id, req.user!.userId, ["in_progress"]);
   const err = handleTransition(res, a);
   if (err) return err;
@@ -721,6 +727,9 @@ bookingsRouter.post("/:id/photo", requireVerifiedWalker, photoUpload.single("pho
 // Completing a walk requires a final photo, and flags integrity signals.
 bookingsRouter.post("/:id/complete", requireVerifiedWalker, photoUpload.single("photo"), async (req, res) => {
   if (!req.file) return unprocessable(res, "Please capture a final photo of the pet to finish.");
+  if (!(await verifyImageMagicBytes(req.file.path, req.file.mimetype))) {
+    return unprocessable(res, "That file isn't a valid image.");
+  }
   const a = await authorizeWalkerTransition(req.params.id, req.user!.userId, ["in_progress"]);
   const err = handleTransition(res, a);
   if (err) return err;

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
 import { unauthorized, forbidden } from "../lib/response.js";
 import { query } from "../lib/db.js";
+import { sessionTokenFrom, clearSessionCookie } from "../lib/cookies.js";
 
 // Augment Express Request with the authenticated user.
 declare global {
@@ -13,18 +14,51 @@ declare global {
   }
 }
 
-/** Require a valid Bearer token; attaches req.user. → 401 if missing/invalid. */
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+/**
+ * Require a valid session; attaches req.user. → 401 if missing/invalid.
+ * Reads the httpOnly session cookie first (browsers), with an
+ * Authorization: Bearer fallback (API clients, future mobile app).
+ *
+ * Also validates against the DB (single PK lookup):
+ *  - the account still exists,
+ *  - the token predates no password change (stolen tokens die on reset),
+ *  - the role is FRESH from the DB, so role changes apply immediately
+ *    instead of after token expiry.
+ */
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
-    return unauthorized(res);
-  }
+  const token =
+    sessionTokenFrom(req) ?? (header?.startsWith("Bearer ") ? header.slice(7) : undefined);
+  if (!token) return unauthorized(res);
+
+  let payload: JwtPayload;
   try {
-    req.user = verifyToken(header.slice(7));
-    next();
+    payload = verifyToken(token);
   } catch {
+    clearSessionCookie(res);
     return unauthorized(res, "Invalid or expired session");
   }
+
+  const r = await query<{ role: JwtPayload["role"]; password_changed_at: string | null }>(
+    "SELECT role, password_changed_at FROM users WHERE id = $1",
+    [payload.userId]
+  );
+  const row = r.rows[0];
+  if (!row) {
+    clearSessionCookie(res);
+    return unauthorized(res, "Invalid or expired session");
+  }
+  if (
+    row.password_changed_at &&
+    payload.iat != null &&
+    payload.iat * 1000 < new Date(row.password_changed_at).getTime()
+  ) {
+    clearSessionCookie(res);
+    return unauthorized(res, "Your password changed — please sign in again.");
+  }
+
+  req.user = { userId: payload.userId, role: row.role };
+  next();
 }
 
 /** Require the authenticated user to have one of the given roles. → 403 otherwise. */
