@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from "http";
 import { Server, type Socket } from "socket.io";
 import { verifyToken } from "./jwt.js";
+import { parseCookies, SESSION_COOKIE } from "./cookies.js";
 import { query } from "./db.js";
 import { pushToUser } from "./push.js";
 
@@ -20,12 +21,22 @@ const room = (userId: string) => `user:${userId}`;
 /** Attach Socket.IO to the HTTP server with JWT auth on the handshake. */
 export function initRealtime(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
-    cors: { origin: (process.env.CORS_ORIGIN ?? "http://localhost:3000").split(",") },
+    cors: {
+      origin: (process.env.CORS_ORIGIN ?? "http://localhost:3000")
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean),
+      credentials: true,
+    },
   });
 
   io.use((socket: Socket, next) => {
-    // Token comes from the client handshake: io(url, { auth: { token } }).
-    const token = socket.handshake.auth?.token as string | undefined;
+    // Session comes from the httpOnly cookie on the handshake request
+    // (JS can't read the token anymore); auth.token kept as a fallback
+    // for non-browser clients.
+    const token =
+      parseCookies(socket.handshake.headers.cookie)[SESSION_COOKIE] ??
+      (socket.handshake.auth?.token as string | undefined);
     if (!token) return next(new Error("unauthorized"));
     try {
       const payload = verifyToken(token);

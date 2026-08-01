@@ -1,5 +1,3 @@
-import { getToken } from "./auth";
-
 /** Standard API envelope (see frontend_guide_v2.md §8 / backend response.ts). */
 interface Envelope<T> {
   succeeded: boolean;
@@ -22,18 +20,17 @@ export class ApiError extends Error {
 }
 
 /**
- * Fetch wrapper that attaches the auth token and unwraps the envelope.
+ * Fetch wrapper that unwraps the envelope. Auth rides in the httpOnly session
+ * cookie (credentials: "include") — no token ever touches JavaScript.
  * Returns `data` on success; throws ApiError(message) on failure.
  */
 export async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(url, { ...init, headers });
+  const res = await fetch(url, { ...init, headers, credentials: "include" });
 
   let body: Envelope<T>;
   try {

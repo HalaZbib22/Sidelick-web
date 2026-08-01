@@ -61,7 +61,7 @@ function SignUpInner() {
     },
     onError: (msg) => toast.error(msg),
     onSubmit: async (values) => {
-      const { token } = await apiFetch<{ token: string }>(api.signup, {
+      const { user } = await apiFetch<{ user: { id: string; role: "user" | "walker" | "admin" } }>(api.signup, {
         method: "POST",
         body: JSON.stringify({
           firstName: values.firstName,
@@ -72,7 +72,7 @@ function SignUpInner() {
           role,
         }),
       });
-      signIn(token);
+      signIn(user);
       toast.success("Account created successfully!");
       router.push(routes.onboarding);
     },

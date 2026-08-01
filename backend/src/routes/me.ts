@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ok, notFoundError, unprocessable, conflict } from "../lib/response.js";
 import { query, pool } from "../lib/db.js";
 import { activeProvider } from "../lib/verification.js";
+import { ALLOWED_IMAGE_TYPES, safeImageFilename, verifyImageMagicBytes } from "../lib/uploads.js";
 import { AMENITY_IDS } from "../lib/amenities.js";
 import {
   SETTLEMENT_RAILS,
@@ -178,12 +179,12 @@ fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadDir),
-    filename: (_req, file, cb) =>
-      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname)}`),
+    // CSPRNG filename; extension from OUR mimetype map, never the client's name.
+    filename: (_req, file, cb) => cb(null, safeImageFilename(file.mimetype)),
   }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024, files: 2, fields: 10, parts: 15 }, // 10MB
   fileFilter: (_req, file, cb) =>
-    cb(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)),
+    cb(null, (ALLOWED_IMAGE_TYPES as readonly string[]).includes(file.mimetype)),
 });
 
 const docTypes = ["national_id", "drivers_license", "passport"] as const;
@@ -205,6 +206,14 @@ meRouter.post(
     const docType = req.body?.docType as string;
     if (!docTypes.includes(docType as (typeof docTypes)[number])) {
       return unprocessable(res, "Please choose a valid document type.");
+    }
+
+    // Content-Type is client-controlled — verify the bytes are a real image.
+    if (
+      !(await verifyImageMagicBytes(doc.path, doc.mimetype)) ||
+      !(await verifyImageMagicBytes(selfie.path, selfie.mimetype))
+    ) {
+      return unprocessable(res, "One of the files isn't a valid image — use JPG, PNG, or WebP.");
     }
 
     const docRef = `private://verification/${doc.filename}`;
