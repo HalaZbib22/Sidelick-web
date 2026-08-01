@@ -1,17 +1,22 @@
-# Supply-chain hygiene: weekly dependency update PRs + security advisories.
+# Supply-chain tripwire — SECURITY-ONLY mode.
+# `open-pull-requests-limit: 0` disables routine version-bump PRs; Dependabot
+# still opens PRs automatically when a package has a known vulnerability
+# (requires "Dependabot security updates" enabled in repo Settings → Security).
+# Routine upgrades are done deliberately in batches instead.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
   - package-ecosystem: npm
     directory: /backend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
