@@ -388,6 +388,8 @@ CREATE TABLE platform_config (
     late_cancel_refund_pct NUMERIC(4, 2) NOT NULL DEFAULT 0.50,
     -- walker payout is held this long after capture so the customer can dispute
     payout_review_hours   INT NOT NULL DEFAULT 24,
+    -- cash-commission debt at which a walker can't accept new bookings
+    cash_debt_block_threshold NUMERIC(10, 2) NOT NULL DEFAULT 50.00,
     -- destination handles the customer sends money to for manual Lebanese rails
     whish_number          TEXT NOT NULL DEFAULT '+961 00 000 000',
     omt_beneficiary       TEXT NOT NULL DEFAULT 'Sidelick SAL',
@@ -466,6 +468,31 @@ CREATE TABLE walker_ledger (
 CREATE INDEX idx_walker_ledger_walker ON walker_ledger (walker_id, created_at);
 CREATE UNIQUE INDEX uq_walker_ledger_cash_commission
   ON walker_ledger (booking_id) WHERE entry_type = 'cash_commission_due';
+
+-- ============================================================
+-- COMMISSION SETTLEMENTS  (walker pays cash-commission debt over a manual rail)
+-- Walker mints a reference, pays the platform account, admin confirms →
+-- a negative 'adjustment' ledger entry closes the debt.
+-- ============================================================
+CREATE TABLE commission_settlements (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    walker_id     UUID NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+
+    amount        NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+    currency      TEXT NOT NULL CHECK (currency IN ('USD', 'LBP', 'AED', 'SAR')),
+    method        TEXT NOT NULL CHECK (method IN ('whish', 'omt', 'bob')),
+    reference     TEXT NOT NULL,
+    destination   TEXT,
+
+    status        TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending', 'confirmed', 'rejected')),
+    admin_note    TEXT CHECK (char_length(admin_note) <= 1000),
+
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at   TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX uq_settlements_pending ON commission_settlements (walker_id) WHERE status = 'pending';
+CREATE INDEX idx_settlements_status ON commission_settlements (status, created_at DESC);
 
 -- ============================================================
 -- DISPUTES  (trust & safety: customer-raised problem with a booking)

@@ -6,6 +6,11 @@ import { ok, notFoundError, unprocessable, conflict } from "../lib/response.js";
 import { query } from "../lib/db.js";
 import { listDisputes, resolveDispute } from "../lib/disputes.js";
 import { listPetReports, reviewPetReport } from "../lib/petReports.js";
+import {
+  listSettlements,
+  confirmSettlement,
+  rejectSettlement,
+} from "../lib/payments/settlements.js";
 import { confirmManualReceipt } from "../lib/payments/service.js";
 import { notify } from "../lib/realtime.js";
 
@@ -119,6 +124,48 @@ adminRouter.get("/debriefs", async (_req, res) => {
       LIMIT 100`
   );
   return ok(res, { stats: stats.rows[0], debriefs: debriefs.rows });
+});
+
+// ---- Commission settlements (walker pays cash-commission debt) ----
+
+// GET /api/admin/settlements?status=pending|confirmed|rejected
+adminRouter.get("/settlements", async (req, res) => {
+  const settlements = await listSettlements(req.query.status as string | undefined);
+  return ok(res, { settlements });
+});
+
+const settlementActionSchema = z.object({
+  action: z.enum(["confirm", "reject"]),
+  note: z.string().max(1000).optional(),
+});
+
+// POST /api/admin/settlements/:id/review — money arrived (confirm) or not (reject).
+adminRouter.post("/settlements/:id/review", async (req, res) => {
+  const parsed = settlementActionSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Choose an action.", parsed.error.flatten());
+  }
+  const result =
+    parsed.data.action === "confirm"
+      ? await confirmSettlement(req.params.id)
+      : await rejectSettlement(req.params.id, parsed.data.note?.trim() || undefined);
+  if (!result.ok) {
+    if (result.code === "notfound") return notFoundError(res, result.message);
+    return conflict(res, result.message);
+  }
+  await notify({
+    userId: result.settlement.walkerId,
+    type: "payment_received",
+    title:
+      parsed.data.action === "confirm"
+        ? "Settlement received ✔"
+        : "Settlement not confirmed",
+    body:
+      parsed.data.action === "confirm"
+        ? "Thanks — your cash-commission balance is cleared. You're all set."
+        : "We couldn't confirm your settlement payment. Check the reference and try again, or contact support.",
+  });
+  return ok(res, { settlement: result.settlement }, "Settlement updated");
 });
 
 // ---- Pet reports (walker-filed pet-profile issues) ----
