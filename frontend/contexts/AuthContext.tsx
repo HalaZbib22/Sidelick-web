@@ -7,7 +7,7 @@ import { getSession, setToken, clearToken, type Session } from "../lib/auth";
 interface AuthContextType {
   session: Session | null;
   isLoading: boolean;
-  signIn: (token: string) => void;
+  signIn: (token: string, remember?: boolean) => void;
   signOut: () => void;
   refreshSession: () => void;
 }
@@ -35,11 +35,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, [qc]);
 
-  const signIn = (token: string) => {
+  const signIn = (token: string, remember = true) => {
     // Wipe the previous user's cached queries (me/pets/bookings/...) so the new
     // session fetches fresh data instead of showing the prior account's role.
     qc.clear();
-    setToken(token);
+    setToken(token, remember);
     setSession(getSession());
   };
   const signOut = () => {

@@ -1,14 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut, Bell, ChevronRight } from "lucide-react";
+import { LogOut, Bell, ChevronRight, LifeBuoy } from "lucide-react";
 import { Protected } from "../../components/auth/Protected";
 import { Button } from "../../components/ui/Button";
 import { BackButton } from "../../components/ui/BackButton";
 import { Skeleton, AvatarHeaderSkeleton } from "../../components/ui/Skeleton";
+import { WalkerServicesEditor } from "../../components/profile/WalkerServicesEditor";
 import { useMe } from "../../hooks/useMe";
 import { useAuth } from "../../contexts/AuthContext";
-import { routes } from "../../lib/paths";
+import { routes, SUPPORT_EMAIL } from "../../lib/paths";
 
 const ROLE_LABEL: Record<string, string> = {
   user: "Pet owner",
@@ -50,14 +51,14 @@ function ProfileInner() {
           {(me.firstName[0] ?? "") + (me.lastName[0] ?? "")}
         </div>
         <div>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="font-display text-3xl font-semibold">
             {me.firstName} {me.lastName}
           </h1>
           <p className="text-sm text-muted-foreground">{ROLE_LABEL[me.role] ?? me.role}</p>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-surface p-5">
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <Row label="Email" value={me.email} />
         {me.phone && <Row label="Phone" value={me.phone} />}
         <Row label="Account type" value={ROLE_LABEL[me.role] ?? me.role} />
@@ -69,7 +70,9 @@ function ProfileInner() {
         )}
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
+      {me.role === "walker" && <WalkerServicesEditor me={me} />}
+
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
         <button
           type="button"
           onClick={() => router.push(routes.notificationSettings)}
@@ -86,6 +89,19 @@ function ProfileInner() {
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </button>
+        <a
+          href={`mailto:${SUPPORT_EMAIL}`}
+          className="flex w-full items-center gap-3 border-t border-border px-5 py-4 text-left transition hover:bg-muted/40"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-trust-subtle text-trust-strong">
+            <LifeBuoy className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">Need help?</span>
+            <span className="block text-xs text-muted-foreground">{SUPPORT_EMAIL}</span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </a>
       </div>
 
       <div className="mt-6">

@@ -15,6 +15,12 @@ import {
 } from "../lib/payments/service.js";
 import { isPaymentsConfigured } from "../lib/payments/index.js";
 import { openDispute, getDisputeForBooking } from "../lib/disputes.js";
+import {
+  PET_REPORT_CATEGORIES,
+  filePetReport,
+  listReportsForBooking,
+} from "../lib/petReports.js";
+import { isDebtBlocked } from "../lib/payments/settlements.js";
 
 // Mounted behind requireAuth.
 export const bookingsRouter = Router();
@@ -58,13 +64,15 @@ type Recurrence = z.infer<typeof recurrenceSchema>;
 
 const bookingSchema = z.object({
   walkerId: z.string().uuid(),
-  serviceType: z.enum(["walk", "sit", "walk_sit"]),
+  serviceType: z.enum(["walk", "daycare", "boarding", "drop_in"]),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   walkDurationMinutes: z.coerce.number().int().min(15).max(240).optional(),
-  sitDurationHours: z.coerce.number().min(1).max(12).optional(),
+  daycareDays: z.coerce.number().int().min(1).max(7).optional(),
+  boardingNights: z.coerce.number().int().min(1).max(30).optional(),
+  dropInMinutes: z.coerce.number().int().min(30).max(60).optional(),
   petIds: z.array(z.string().uuid()).min(1).max(5),
-  foodDays: z.coerce.number().int().min(0).max(14).optional(),
+  foodDays: z.coerce.number().int().min(0).max(30).optional(),
   isSharedWalk: z.boolean().optional(),
   dropoff: z.boolean().optional(),
   notes: z.string().max(1000).optional(),
@@ -97,12 +105,36 @@ async function insertOccurrence(
   start: Date,
   series?: { id: string; index: number }
 ): Promise<string> {
-  const hasWalk = body.serviceType === "walk" || body.serviceType === "walk_sit";
-  const hasSit = body.serviceType === "sit" || body.serviceType === "walk_sit";
-  const walkEnd = hasWalk ? new Date(start.getTime() + (body.walkDurationMinutes ?? 60) * 60000) : null;
-  const sitStart = hasSit ? (body.serviceType === "walk_sit" ? walkEnd! : start) : null;
-  const sitEnd = hasSit ? new Date(sitStart!.getTime() + (body.sitDurationHours ?? 4) * 3600000) : null;
-  const bookingEnd = hasSit ? sitEnd! : walkEnd!;
+  // Per-service timing. Each catalog service has one shape:
+  //   walk     — minutes at the owner's area
+  //   drop_in  — a 30/60-min visit at the owner's home
+  //   daycare  — N days at the walker's home (~10h care window per day)
+  //   boarding — N overnights at the walker's home
+  const HOUR = 3600000;
+  const DAY = 24 * HOUR;
+  const DAYCARE_WINDOW_HOURS = 10;
+
+  let bookingEnd: Date;
+  switch (body.serviceType) {
+    case "walk":
+      bookingEnd = new Date(start.getTime() + (body.walkDurationMinutes ?? 60) * 60000);
+      break;
+    case "drop_in":
+      bookingEnd = new Date(start.getTime() + (body.dropInMinutes ?? 30) * 60000);
+      break;
+    case "daycare": {
+      const days = body.daycareDays ?? 1;
+      bookingEnd = new Date(
+        start.getTime() + (days - 1) * DAY + DAYCARE_WINDOW_HOURS * HOUR
+      );
+      break;
+    }
+    case "boarding": {
+      const nights = body.boardingNights ?? 1;
+      bookingEnd = new Date(start.getTime() + nights * DAY);
+      break;
+    }
+  }
 
   // Walker's accept/decline deadline: the response window, but never past the
   // booking's own start time. The expiry sweeper acts on this.
@@ -138,19 +170,27 @@ async function insertOccurrence(
   );
   const bookingId = b.rows[0].id;
 
-  let seq = 0;
-  if (hasWalk) {
+  // Segments: daycare gets one per day (day_index orders them); the other
+  // services are a single segment. Walk/drop-in happen at the owner's side,
+  // daycare/boarding at the walker's home.
+  if (body.serviceType === "daycare") {
+    const days = body.daycareDays ?? 1;
+    for (let i = 0; i < days; i++) {
+      const dayStart = new Date(start.getTime() + i * DAY);
+      const dayEnd = new Date(dayStart.getTime() + DAYCARE_WINDOW_HOURS * HOUR);
+      await client.query(
+        `INSERT INTO booking_segments (booking_id, segment_type, start_at, end_at, location_type, day_index, sequence)
+         VALUES ($1,'daycare',$2,$3,'walker_home',$4,0)`,
+        [bookingId, dayStart.toISOString(), dayEnd.toISOString(), i]
+      );
+    }
+  } else {
+    const locationType =
+      body.serviceType === "boarding" ? "walker_home" : "customer_home";
     await client.query(
       `INSERT INTO booking_segments (booking_id, segment_type, start_at, end_at, location_type, sequence)
-       VALUES ($1,'walk',$2,$3,'customer_home',$4)`,
-      [bookingId, start.toISOString(), walkEnd!.toISOString(), seq++]
-    );
-  }
-  if (hasSit) {
-    await client.query(
-      `INSERT INTO booking_segments (booking_id, segment_type, start_at, end_at, location_type, sequence)
-       VALUES ($1,'sit',$2,$3,'walker_home',$4)`,
-      [bookingId, sitStart!.toISOString(), sitEnd!.toISOString(), seq++]
+       VALUES ($1,$2,$3,$4,$5,0)`,
+      [bookingId, body.serviceType, start.toISOString(), bookingEnd.toISOString(), locationType]
     );
   }
   for (const petId of body.petIds) {
@@ -161,6 +201,12 @@ async function insertOccurrence(
 
 // Same-day bookings need enough lead time for the walker to accept + arrive.
 const MIN_LEAD_MINUTES = 30;
+
+// A walk can't be started too far ahead of its scheduled time (walkers shouldn't
+// clock in early), nor after the start window has clearly lapsed (past that it's a
+// no-show and the owner can cancel for a refund via the existing flow).
+const START_EARLY_GRACE_MINUTES = 15;
+const START_LATE_GRACE_MINUTES = 30;
 
 /** Returns an error string if the requested start is in the past / too soon, else null. */
 function startTimeError(date: string, startTime: string): string | null {
@@ -203,8 +249,7 @@ async function buildQuote(body: BookingBody, customerId: string) {
   if (walker.verification_status !== "verified")
     return { ok: false as const, error: "This walker isn't available for booking yet." };
 
-  const needed = body.serviceType === "walk_sit" ? ["walk", "sit"] : [body.serviceType];
-  if (!needed.every((s) => walker.service_types.includes(s))) {
+  if (!walker.service_types.includes(body.serviceType)) {
     return { ok: false as const, error: "This walker doesn't offer that service." };
   }
 
@@ -221,7 +266,9 @@ async function buildQuote(body: BookingBody, customerId: string) {
   const input: QuoteInput = {
     serviceType: body.serviceType,
     walkDurationMinutes: body.walkDurationMinutes,
-    sitDurationHours: body.sitDurationHours,
+    daycareDays: body.daycareDays,
+    boardingNights: body.boardingNights,
+    dropInMinutes: body.dropInMinutes,
     petCount: body.petIds.length,
     foodDays: body.foodDays,
     distanceKm,
@@ -256,13 +303,34 @@ bookingsRouter.post("/", async (req, res) => {
   const te = startTimeError(body.date, body.startTime);
   if (te) return unprocessable(res, te);
 
-  // Pets must belong to the customer.
-  const petCheck = await query<{ n: string }>(
-    "SELECT COUNT(*)::text AS n FROM pets WHERE id = ANY($1::uuid[]) AND owner_id = $2",
+  // Pets must belong to the customer (and we need their species for the rules below).
+  const petCheck = await query<{ species: string }>(
+    "SELECT species FROM pets WHERE id = ANY($1::uuid[]) AND owner_id = $2",
     [body.petIds, customerId]
   );
-  if (Number(petCheck.rows[0].n) !== body.petIds.length) {
+  if (petCheck.rows.length !== body.petIds.length) {
     return unprocessable(res, "One or more selected pets aren't yours.");
+  }
+
+  // Species rules — enforced here, not just in the UI.
+  const bookedSpecies = new Set(petCheck.rows.map((r) => r.species));
+  if (bookedSpecies.has("cat") && body.serviceType === "walk") {
+    return unprocessable(res, "Walks are dogs-only — cats can do daycare, boarding, or drop-in visits.");
+  }
+  const acceptedRow = await query<{ accepted_species: string[] }>(
+    "SELECT accepted_species FROM users WHERE id = $1",
+    [body.walkerId]
+  );
+  const accepted = acceptedRow.rows[0]?.accepted_species ?? ["dog"];
+  for (const s of bookedSpecies) {
+    if (!accepted.includes(s)) {
+      return unprocessable(
+        res,
+        s === "cat"
+          ? "This walker doesn't care for cats yet — try filtering for cat sitters."
+          : "This walker doesn't care for dogs."
+      );
+    }
   }
 
   const result = await buildQuote(body, customerId);
@@ -397,6 +465,17 @@ bookingsRouter.get("/:id", async (req, res) => {
        FROM booking_segments WHERE booking_id = $1 ORDER BY sequence`,
     [req.params.id]
   );
+  // The pets on this booking — the walker needs them for handoff confirmation.
+  const bookingPets = await query(
+    `SELECT p.id, p.name, p.species, p.breed,
+            p.photo_url AS "photoUrl",
+            p.friendly_with_pets AS "friendlyWithPets",
+            p.size, p.notes
+       FROM booking_pets bp JOIN pets p ON p.id = bp.pet_id
+      WHERE bp.booking_id = $1
+      ORDER BY p.name`,
+    [req.params.id]
+  );
   return ok(res, {
     booking: {
       id: b.id,
@@ -415,10 +494,13 @@ bookingsRouter.get("/:id", async (req, res) => {
       dropoffRequired: b.dropoff_required,
       specialInstructions: b.special_instructions,
       role: b.walker_id === uid ? "walker" : "customer",
+      walkerId: b.walker_id, // powers the post-review "save walker" prompt
       counterpartName:
         b.walker_id === uid
           ? `${b.customerFirst} ${String(b.customerLast)[0]}.`
           : `${b.walkerFirst} ${String(b.walkerLast)[0]}.`,
+      petsConfirmedAt: b.pets_confirmed_at,
+      pets: bookingPets.rows,
       segments: segs.rows,
     },
   });
@@ -503,8 +585,15 @@ async function authorizeWalkerTransition(id: string, uid: string, from: string[]
 // Bookings ending before this fraction of the booked duration are flagged for review.
 const EARLY_COMPLETION_THRESHOLD = 0.9;
 
-// Walker accepts — must be a VERIFIED walker.
+// Walker accepts — must be a VERIFIED walker with cash-commission debt under
+// the block threshold (the settle-up gate; see lib/payments/settlements.ts).
 bookingsRouter.post("/:id/accept", requireVerifiedWalker, async (req, res) => {
+  if (await isDebtBlocked(req.user!.userId)) {
+    return conflict(
+      res,
+      "Your cash-commission balance has reached its limit. Settle up from your dashboard to keep accepting bookings."
+    );
+  }
   const r = await transition(req.params.id, req.user!.userId, "walker", ["requested"], "accepted");
   const err = handleTransition(res, r);
   if (err) return err;
@@ -517,10 +606,33 @@ bookingsRouter.post("/:id/accept", requireVerifiedWalker, async (req, res) => {
   });
   return ok(res, { status: "accepted" }, "Booking accepted");
 });
+// Why a walker declined — structured for analytics/triage. Kept internal; the
+// owner only ever sees a neutral "not available" message. Codes mirror the
+// bookings.decline_reason CHECK constraint (migration 0014).
+const declineSchema = z.object({
+  reasonCode: z.enum([
+    "unavailable",
+    "too_far",
+    "dog_fit",
+    "too_many_dogs",
+    "special_needs",
+    "uncomfortable",
+    "other",
+  ]),
+  note: z.string().max(1000).optional(),
+});
+
 bookingsRouter.post("/:id/decline", async (req, res) => {
+  const parsed = declineSchema.safeParse(req.body ?? {});
+  if (!parsed.success)
+    return unprocessable(res, "Please choose a reason for declining.", parsed.error.flatten());
   const r = await transition(req.params.id, req.user!.userId, "walker", ["requested"], "declined");
   const err = handleTransition(res, r);
   if (err) return err;
+  await query(
+    `UPDATE bookings SET decline_reason = $1, decline_note = $2, updated_at = now() WHERE id = $3`,
+    [parsed.data.reasonCode, parsed.data.note?.trim() || null, req.params.id]
+  );
   // A declined request is normally pre-payment, but release any hold defensively.
   await voidOrRefundForBooking(req.params.id, "booking_declined");
   await notify({
@@ -564,6 +676,22 @@ bookingsRouter.post("/:id/start", requireVerifiedWalker, photoUpload.single("pho
   // aren't configured (dev / pre-launch), so the flow still works end to end.
   if (isPaymentsConfigured() && !(await isBookingPaid(req.params.id))) {
     return conflict(res, "Waiting on the customer's payment — the walk can start once it's held.");
+  }
+  // Start-window gate: not too early (walkers can clock in up to 15 min ahead), and
+  // not after the window has clearly lapsed (30 min past = treat as a no-show).
+  const scheduledMs = new Date(a.booking!.start_at).getTime();
+  const nowMs = Date.now();
+  if (nowMs < scheduledMs - START_EARLY_GRACE_MINUTES * 60_000) {
+    return conflict(
+      res,
+      `It's too early to start this walk. You can check in from ${START_EARLY_GRACE_MINUTES} minutes before the scheduled time.`
+    );
+  }
+  if (nowMs > scheduledMs + START_LATE_GRACE_MINUTES * 60_000) {
+    return conflict(
+      res,
+      "The start window for this booking has passed. Ask the owner to cancel it for a refund so it can be rebooked."
+    );
   }
   await storeCheckpoint(req.params.id, "start", privateRef("walk", req.file.filename));
   await query(
@@ -711,4 +839,130 @@ bookingsRouter.get("/:id/photos/:checkpoint/file", async (req, res) => {
   const fp = resolvePrivateFile(r.rows[0]?.ref ?? null);
   if (!fp) return notFoundError(res, "File not found");
   return res.sendFile(fp);
+});
+
+// ---- Pet confirmation + pet reports (walker-side trust loop) ----
+
+// POST /api/bookings/:id/confirm-pets — walker confirms the pets match their
+// profiles at handoff. Idempotent; recorded once.
+bookingsRouter.post("/:id/confirm-pets", async (req, res) => {
+  const a = await authorizeWalkerTransition(req.params.id, req.user!.userId, [
+    "accepted",
+    "in_progress",
+  ]);
+  const err = handleTransition(res, a);
+  if (err) return err;
+  const r = await query<{ pets_confirmed_at: string }>(
+    `UPDATE bookings SET pets_confirmed_at = COALESCE(pets_confirmed_at, now())
+      WHERE id = $1 RETURNING pets_confirmed_at`,
+    [req.params.id]
+  );
+  return ok(
+    res,
+    { petsConfirmedAt: r.rows[0].pets_confirmed_at },
+    "Pets confirmed — thanks for checking!"
+  );
+});
+
+const petReportSchema = z.object({
+  petId: z.string().uuid(),
+  category: z.enum(PET_REPORT_CATEGORIES),
+  note: z.string().max(1000).optional(),
+});
+
+// POST /api/bookings/:id/pet-report — walker flags a pet-profile inaccuracy.
+bookingsRouter.post("/:id/pet-report", async (req, res) => {
+  const parsed = petReportSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Please choose what went wrong.", parsed.error.flatten());
+  }
+  const result = await filePetReport({
+    bookingId: req.params.id,
+    petId: parsed.data.petId,
+    reporterId: req.user!.userId,
+    category: parsed.data.category,
+    note: parsed.data.note?.trim() || undefined,
+  });
+  if (!result.ok) {
+    if (result.code === "notfound") return notFoundError(res, result.message);
+    if (result.code === "forbidden") return forbidden(res, result.message);
+    return conflict(res, result.message);
+  }
+  return ok(res, { report: result.report }, "Report filed — our team will review it.", 201);
+});
+
+// GET /api/bookings/:id/pet-reports — the caller's reports on this booking.
+bookingsRouter.get("/:id/pet-reports", async (req, res) => {
+  const b = await loadBookingForViewer(req.params.id, req.user!.userId, req.user!.role);
+  if (!b) return notFoundError(res, "Booking not found");
+  const reports = await listReportsForBooking(req.params.id, req.user!.userId);
+  return ok(res, { reports });
+});
+
+// ---- Service debrief (walker's internal post-service report; admin-only) ----
+
+const debriefSchema = z.union([
+  z.object({ skipped: z.literal(true) }),
+  z.object({
+    skipped: z.literal(false).optional(),
+    overall: z.number().int().min(1).max(5),
+    petAsDescribed: z.enum(["yes", "mostly", "no"]),
+    ownerCommunication: z.enum(["great", "fine", "difficult"]),
+    handoff: z.enum(["smooth", "minor_issues", "problematic"]),
+    workAgain: z.enum(["yes", "maybe", "no"]),
+    note: z.string().max(1000).optional(),
+  }),
+]);
+
+// GET /api/bookings/:id/debrief — has the walker already debriefed/skipped?
+bookingsRouter.get("/:id/debrief", async (req, res) => {
+  const b = await loadBookingForViewer(req.params.id, req.user!.userId, req.user!.role);
+  if (!b) return notFoundError(res, "Booking not found");
+  const r = await query<{ id: string; skipped: boolean }>(
+    "SELECT id, skipped FROM service_debriefs WHERE booking_id = $1 AND walker_id = $2",
+    [req.params.id, req.user!.userId]
+  );
+  return ok(res, { debrief: r.rows[0] ?? null });
+});
+
+// POST /api/bookings/:id/debrief — submit (or skip). Once per booking.
+bookingsRouter.post("/:id/debrief", async (req, res) => {
+  const parsed = debriefSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Please answer every question (or skip).", parsed.error.flatten());
+  }
+  const a = await authorizeWalkerTransition(req.params.id, req.user!.userId, ["completed"]);
+  const err = handleTransition(res, a);
+  if (err) return err;
+
+  const d = parsed.data;
+  const skipped = "skipped" in d && d.skipped === true;
+  try {
+    const r = await query<{ id: string; skipped: boolean }>(
+      `INSERT INTO service_debriefs
+         (booking_id, walker_id, skipped, overall, pet_as_described,
+          owner_communication, handoff, work_again, note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, skipped`,
+      skipped
+        ? [req.params.id, req.user!.userId, true, null, null, null, null, null, null]
+        : [
+            req.params.id,
+            req.user!.userId,
+            false,
+            (d as { overall: number }).overall,
+            (d as { petAsDescribed: string }).petAsDescribed,
+            (d as { ownerCommunication: string }).ownerCommunication,
+            (d as { handoff: string }).handoff,
+            (d as { workAgain: string }).workAgain,
+            (d as { note?: string }).note?.trim() || null,
+          ]
+    );
+    return ok(res, { debrief: r.rows[0] }, skipped ? "Skipped" : "Thanks for the debrief!", 201);
+  } catch (e) {
+    if ((e as { code?: string }).code === "23505") {
+      return conflict(res, "You've already debriefed this booking.");
+    }
+    throw e;
+  }
 });

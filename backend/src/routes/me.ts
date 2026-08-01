@@ -3,9 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 import { z } from "zod";
-import { ok, notFoundError, unprocessable } from "../lib/response.js";
+import { ok, notFoundError, unprocessable, conflict } from "../lib/response.js";
 import { query, pool } from "../lib/db.js";
 import { activeProvider } from "../lib/verification.js";
+import { AMENITY_IDS } from "../lib/amenities.js";
+import {
+  SETTLEMENT_RAILS,
+  createSettlement,
+  debtBlockThreshold,
+  getCashDebt,
+  pendingSettlement,
+} from "../lib/payments/settlements.js";
 
 // Mounted behind requireAuth — every route here has req.user.
 export const meRouter = Router();
@@ -15,6 +23,8 @@ const SELECT_ME = `
   profile_photo_url AS "profilePhotoUrl", bio, locale,
   preferred_currency AS "preferredCurrency",
   service_types      AS "serviceTypes",
+  amenities,
+  accepted_species   AS "acceptedSpecies",
   subscription_tier  AS "subscriptionTier",
   max_pack_size      AS "maxPackSize",
   max_boarding_pets  AS "maxBoardingPets",
@@ -31,7 +41,11 @@ meRouter.get("/", async (req, res) => {
 
 // ---- Walker profile (services + capacity + bio) ----
 const walkerProfileSchema = z.object({
-  serviceTypes: z.array(z.enum(["walk", "sit"])).min(1, "Choose at least one service"),
+  serviceTypes: z
+    .array(z.enum(["walk", "daycare", "boarding", "drop_in"]))
+    .min(1, "Choose at least one service"),
+  amenities: z.array(z.enum(AMENITY_IDS)).max(AMENITY_IDS.length).optional(),
+  acceptedSpecies: z.array(z.enum(["dog", "cat"])).min(1, "Choose at least one pet type").optional(),
   maxPackSize: z.coerce.number().int().min(1).max(4).optional(),
   maxBoardingPets: z.coerce.number().int().min(1).max(3).optional(),
   bio: z.string().max(500).optional().nullable(),
@@ -48,15 +62,19 @@ meRouter.patch("/walker-profile", async (req, res) => {
   const result = await query(
     `UPDATE users
        SET service_types = $1::jsonb,
-           max_pack_size = $2,
-           max_boarding_pets = $3,
-           bio = COALESCE($4, bio),
-           latitude = COALESCE($5, latitude),
-           longitude = COALESCE($6, longitude)
-     WHERE id = $7
+           amenities = COALESCE($2::jsonb, amenities),
+           accepted_species = COALESCE($3::jsonb, accepted_species),
+           max_pack_size = $4,
+           max_boarding_pets = $5,
+           bio = COALESCE($6, bio),
+           latitude = COALESCE($7, latitude),
+           longitude = COALESCE($8, longitude)
+     WHERE id = $9
      RETURNING ${SELECT_ME}`,
     [
       JSON.stringify(p.serviceTypes),
+      p.amenities ? JSON.stringify(p.amenities) : null,
+      p.acceptedSpecies ? JSON.stringify(p.acceptedSpecies) : null,
       p.maxPackSize ?? null,
       p.maxBoardingPets ?? null,
       p.bio ?? null,
@@ -115,6 +133,42 @@ meRouter.put("/availability", async (req, res) => {
     client.release();
   }
   return ok(res, { saved: true }, "Availability saved");
+});
+
+// ---- Cash-commission balance & settlement (walker-facing) ----
+
+// GET /api/me/cash-balance — what the walker owes, the block threshold, and
+// any in-flight settlement.
+meRouter.get("/cash-balance", async (req, res) => {
+  const uid = req.user!.userId;
+  const [balances, threshold, pending] = await Promise.all([
+    getCashDebt(uid),
+    debtBlockThreshold(),
+    pendingSettlement(uid),
+  ]);
+  const usd = balances.find((b) => b.currency === "USD")?.amount ?? 0;
+  return ok(res, {
+    balances,
+    threshold,
+    blocked: usd >= threshold,
+    pendingSettlement: pending,
+  });
+});
+
+const settlementSchema = z.object({ method: z.enum(SETTLEMENT_RAILS) });
+
+// POST /api/me/settlements — open a settlement for the full USD balance.
+meRouter.post("/settlements", async (req, res) => {
+  const parsed = settlementSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Choose how you'll send the payment.", parsed.error.flatten());
+  }
+  const result = await createSettlement(req.user!.userId, parsed.data.method);
+  if (!result.ok) {
+    if (result.code === "conflict") return conflict(res, result.message);
+    return unprocessable(res, result.message);
+  }
+  return ok(res, { settlement: result.settlement }, "Settlement opened — send the payment quoting your reference.", 201);
 });
 
 // ---- Identity verification (private upload) ----

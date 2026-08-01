@@ -1,14 +1,22 @@
 import { query } from "./db.js";
 
-/** Canonical pricing engine (planning_v2.md §3). Server-authoritative. */
+/**
+ * Canonical pricing engine. Server-authoritative.
+ * Four-way catalog: walk (per hour, prorated) · daycare (per day) ·
+ * boarding (per night) · drop-in (per 30-min visit).
+ */
+export type CatalogService = "walk" | "daycare" | "boarding" | "drop_in";
+
 export interface QuoteInput {
-  serviceType: "walk" | "sit" | "walk_sit";
-  walkDurationMinutes?: number;
-  sitDurationHours?: number;
+  serviceType: CatalogService;
+  walkDurationMinutes?: number; // walk
+  daycareDays?: number;         // daycare
+  boardingNights?: number;      // boarding
+  dropInMinutes?: number;       // drop_in (30 or 60)
   petCount: number;
-  foodDays?: number;
+  foodDays?: number;            // boarding add-on
   distanceKm?: number;
-  isSharedWalk?: boolean;
+  isSharedWalk?: boolean;       // walk only
   tier?: string | null;
 }
 
@@ -46,7 +54,10 @@ interface PricingConfigRow {
   version: number;
   currency: string;
   base_walk_rate: string;
-  base_sit_rate: string;
+  base_sit_rate: string; // legacy (pre-catalog)
+  base_daycare_rate: string | null;
+  base_boarding_rate: string | null;
+  base_drop_in_rate: string | null;
   tier_multipliers: Record<string, number>;
   distance_threshold_km: string;
   distance_fee_per_km: string;
@@ -70,7 +81,7 @@ export async function computeQuote(input: QuoteInput): Promise<Quote | null> {
   const lines: QuoteLine[] = [];
   let subtotal = 0;
 
-  if (input.serviceType === "walk" || input.serviceType === "walk_sit") {
+  if (input.serviceType === "walk") {
     const mins = input.walkDurationMinutes ?? 60;
     let walkBase = Number(c.base_walk_rate) * tierMult * (mins / 60);
     lines.push({ label: `Walk (${formatDur(mins)})`, amount: round(walkBase) });
@@ -82,16 +93,30 @@ export async function computeQuote(input: QuoteInput): Promise<Quote | null> {
     subtotal += walkBase;
   }
 
-  if (input.serviceType === "sit" || input.serviceType === "walk_sit") {
-    const hrs = input.sitDurationHours ?? 4;
-    const sitBase = Number(c.base_sit_rate) * tierMult * hrs;
-    lines.push({ label: `Sitting (${hrs} hr${hrs > 1 ? "s" : ""})`, amount: round(sitBase) });
-    subtotal += sitBase;
+  if (input.serviceType === "daycare") {
+    const days = input.daycareDays ?? 1;
+    const base = Number(c.base_daycare_rate ?? c.base_sit_rate) * tierMult * days;
+    lines.push({ label: `Daycare (${days} day${days > 1 ? "s" : ""})`, amount: round(base) });
+    subtotal += base;
+  }
+
+  if (input.serviceType === "boarding") {
+    const nights = input.boardingNights ?? 1;
+    const base = Number(c.base_boarding_rate ?? c.base_sit_rate) * tierMult * nights;
+    lines.push({ label: `Boarding (${nights} night${nights > 1 ? "s" : ""})`, amount: round(base) });
+    subtotal += base;
     if (input.foodDays && input.foodDays > 0) {
       const food = Math.min(Number(c.food_daily_fee), Number(c.food_daily_cap)) * input.foodDays;
       lines.push({ label: `Food handling (${input.foodDays} day${input.foodDays > 1 ? "s" : ""})`, amount: round(food) });
       subtotal += food;
     }
+  }
+
+  if (input.serviceType === "drop_in") {
+    const mins = input.dropInMinutes ?? 30;
+    const base = Number(c.base_drop_in_rate ?? c.base_sit_rate) * tierMult * (mins / 30);
+    lines.push({ label: `Drop-in visit (${formatDur(mins)})`, amount: round(base) });
+    subtotal += base;
   }
 
   if (input.distanceKm && input.distanceKm > Number(c.distance_threshold_km)) {
@@ -112,7 +137,10 @@ export async function computeQuote(input: QuoteInput): Promise<Quote | null> {
   const total = round(servicePrice);
 
   // Commission + minimum-earnings (internal; not shown to the customer).
-  const hours = (input.walkDurationMinutes ?? 0) / 60 + (input.sitDurationHours ?? 0);
+  // The hourly floor applies to time-based services (walk, drop-in); day/night
+  // services are priced per unit well above hourly minimums.
+  const hours =
+    (input.walkDurationMinutes ?? 0) / 60 + (input.dropInMinutes ?? 0) / 60;
   let walkerPayout = servicePrice * (1 - Number(c.platform_pct));
   const floor = Number(c.min_wage_hourly) * hours;
   if (walkerPayout < floor) walkerPayout = Math.min(floor, servicePrice);

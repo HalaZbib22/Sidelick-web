@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Cat, Check, Dog } from "lucide-react";
 import { Protected } from "../../components/auth/Protected";
 import { Button } from "../../components/ui/Button";
 import { NumberStepper } from "../../components/ui/NumberStepper";
@@ -15,6 +15,8 @@ import { Switch } from "../../components/ui/Switch";
 import { TimePicker } from "../../components/ui/TimePicker";
 import { CameraCapture } from "../../components/ui/CameraCapture";
 import { LeafletMap } from "../../components/map/LeafletMap";
+import { AmenityPicker } from "../../components/walkers/AmenityChips";
+import { SERVICES } from "../../lib/services";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiFetch } from "../../lib/api";
 import { api, routes } from "../../lib/paths";
@@ -28,9 +30,9 @@ const TOTAL_STEPS = 4;
 function OwnerOnboarding() {
   return (
     <main className="mx-auto max-w-md px-6 py-16 text-center">
-      <h1 className="text-2xl font-semibold">Welcome to Sidelick</h1>
+      <h1 className="font-display text-3xl font-semibold">Welcome to Sidelick</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Add your dog so walkers know who they&apos;ll be caring for.
+        Add your pet so walkers know who they&apos;ll be caring for.
       </p>
       <div className="mt-6 flex flex-col gap-3">
         <Link href={routes.pets} className="rounded-xl bg-primary px-6 py-3 text-sm font-medium text-primary-foreground">
@@ -114,11 +116,16 @@ function WalkerOnboarding() {
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
 
-  // Step 1 — services + capacity + location
-  const [walk, setWalk] = useState(true);
-  const [sit, setSit] = useState(false);
+  // Step 1 — services + capacity + amenities + location
+  const [services, setServices] = useState<ServiceType[]>(["walk"]);
+  const toggleService = (s: ServiceType) =>
+    setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  const walk = services.includes("walk");
+  const hosting = services.includes("daycare") || services.includes("boarding");
   const [maxPackSize, setMaxPackSize] = useState(4);
   const [maxBoardingPets, setMaxBoardingPets] = useState(3);
+  const [amenities, setAmenities] = useState<string[]>([]);
+  const [acceptedSpecies, setAcceptedSpecies] = useState<string[]>(["dog"]);
   const [lat, setLat] = useState(33.8938);
   const [lng, setLng] = useState(35.5018);
 
@@ -155,18 +162,18 @@ function WalkerOnboarding() {
     setAvail((a) => a.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   async function saveServices() {
-    const serviceTypes: ServiceType[] = [];
-    if (walk) serviceTypes.push("walk");
-    if (sit) serviceTypes.push("sit");
-    if (serviceTypes.length === 0) return toast.error("Choose at least one service.");
+    if (services.length === 0) return toast.error("Choose at least one service.");
+    if (acceptedSpecies.length === 0) return toast.error("Choose at least one pet type you care for.");
     setBusy(true);
     try {
       await apiFetch(api.meWalkerProfile, {
         method: "PATCH",
         body: JSON.stringify({
-          serviceTypes,
+          serviceTypes: services,
+          amenities,
+          acceptedSpecies,
           maxPackSize: walk ? maxPackSize : undefined,
-          maxBoardingPets: sit ? maxBoardingPets : undefined,
+          maxBoardingPets: hosting ? maxBoardingPets : undefined,
           latitude: lat,
           longitude: lng,
         }),
@@ -218,17 +225,67 @@ function WalkerOnboarding() {
 
   return (
     <main className="mx-auto max-w-md px-6 py-10">
-      <h1 className="mb-1 text-2xl font-semibold">Set up your walker profile</h1>
+      <h1 className="font-display mb-1 text-3xl font-semibold">Set up your walker profile</h1>
       <p className="mb-6 text-sm text-muted-foreground">A few quick steps to get you ready.</p>
       <Stepper step={step} />
 
       {step === 1 && (
         <div className="space-y-4">
           <p className="font-medium">What do you offer?</p>
-          <ServiceCard title="Dog walking" subtitle="Walks at the owner's area" selected={walk} onClick={() => setWalk((v) => !v)} />
+          {SERVICES.map((s) => (
+            <ServiceCard
+              key={s.value}
+              title={s.label}
+              subtitle={s.blurb}
+              selected={services.includes(s.value)}
+              onClick={() => toggleService(s.value)}
+            />
+          ))}
           {walk && <NumberStepper label="Max dogs per group walk" value={maxPackSize} onChange={setMaxPackSize} min={1} max={4} />}
-          <ServiceCard title="Sitting / boarding" subtitle="Daycare & overnight at your home" selected={sit} onClick={() => setSit((v) => !v)} />
-          {sit && <NumberStepper label="Max dogs you can board" value={maxBoardingPets} onChange={setMaxBoardingPets} min={1} max={3} />}
+          {hosting && <NumberStepper label="Max pets you can host at home" value={maxBoardingPets} onChange={setMaxBoardingPets} min={1} max={3} />}
+
+          <div>
+            <p className="mb-1.5 text-sm font-medium">Who do you care for?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { value: "dog", label: "Dogs", icon: Dog },
+                  { value: "cat", label: "Cats", icon: Cat },
+                ] as const
+              ).map(({ value, label, icon: Icon }) => {
+                const on = acceptedSpecies.includes(value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() =>
+                      setAcceptedSpecies((prev) =>
+                        on ? prev.filter((s) => s !== value) : [...prev, value]
+                      )
+                    }
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-medium transition-colors",
+                      on
+                        ? "border-primary bg-accent-subtle/60 text-foreground shadow-sm"
+                        : "border-border bg-surface text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    <Icon className={cn("h-4 w-4", on && "text-primary")} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium">Your skills &amp; home</p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Tap everything that applies — e.g. First aid / CPR, Fenced garden. Owners filter by these, so more is better.
+            </p>
+            <AmenityPicker value={amenities} onChange={setAmenities} />
+          </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">

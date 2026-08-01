@@ -1,6 +1,6 @@
 export type Role = "user" | "walker" | "admin";
 export type VerificationStatus = "unverified" | "pending" | "verified" | "rejected";
-export type ServiceType = "walk" | "sit";
+export type ServiceType = "walk" | "daycare" | "boarding" | "drop_in";
 export type DocType = "national_id" | "drivers_license" | "passport";
 
 export type NotificationType =
@@ -37,6 +37,8 @@ export interface Me {
   phone: string | null;
   bio: string | null;
   serviceTypes: ServiceType[];
+  amenities: string[];
+  acceptedSpecies: PetSpecies[];
   maxPackSize: number | null;
   maxBoardingPets: number | null;
   verificationStatus: VerificationStatus;
@@ -47,6 +49,7 @@ export interface WalkerCard {
   firstName: string;
   lastInitial: string;
   serviceTypes: ServiceType[];
+  acceptedSpecies: PetSpecies[];
   subscriptionTier: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -55,6 +58,8 @@ export interface WalkerCard {
   ratingCount: number;
   distanceKm: number | null;
   priceFrom: number | null;
+  priceFromUnit: string | null;
+  isFavorite: boolean;
 }
 
 export interface WalkerProfile {
@@ -63,14 +68,19 @@ export interface WalkerProfile {
   lastName: string;
   bio: string | null;
   serviceTypes: ServiceType[];
+  amenities: string[];
+  acceptedSpecies: PetSpecies[];
   subscriptionTier: string | null;
   profilePhotoUrl: string | null;
   ratingAvg: number;
   ratingCount: number;
   priceFrom: number | null;
+  priceFromUnit: string | null;
+  isFavorite: boolean;
 }
 
-export type BookingServiceType = "walk" | "sit" | "walk_sit";
+/** 'sit'/'walk_sit' are legacy values on pre-catalog bookings (display only). */
+export type BookingServiceType = ServiceType | "sit" | "walk_sit";
 export type BookingStatus =
   | "requested" | "accepted" | "in_progress" | "completed" | "declined" | "cancelled" | "expired";
 
@@ -101,7 +111,7 @@ export interface BookingSummary {
 }
 
 export interface BookingSegment {
-  segmentType: "walk" | "sit";
+  segmentType: "walk" | "daycare" | "boarding" | "drop_in" | "sit";
   startAt: string;
   endAt: string;
   locationType: string;
@@ -119,10 +129,140 @@ export interface BookingDetail extends Omit<BookingSummary, never> {
   endedEarly: boolean;
   /** True when no halfway photo was captured during the walk. */
   missedMidPhoto: boolean;
+  /** The walker on this booking — powers the post-review "save walker" prompt. */
+  walkerId: string;
+  /** When the walker confirmed the pets match their profiles (null = not yet). */
+  petsConfirmedAt: string | null;
+  pets: BookingPet[];
   segments: BookingSegment[];
 }
 
+/** A pet as attached to a booking — what the walker sees at handoff. */
+export interface BookingPet {
+  id: string;
+  name: string;
+  species: PetSpecies;
+  breed: string | null;
+  photoUrl: string | null;
+  friendlyWithPets: FriendlyWithPets;
+  size: PetSize | null;
+  notes: string | null;
+}
+
+export type PetReportCategory =
+  | "profile_mismatch"
+  | "behavior_undisclosed"
+  | "health_undisclosed"
+  | "wrong_pet"
+  | "other";
+export type PetReportStatus = "open" | "reviewed" | "dismissed";
+
+export const PET_REPORT_CATEGORY_LABELS: Record<PetReportCategory, string> = {
+  profile_mismatch: "Profile doesn't match the pet",
+  behavior_undisclosed: "Behavior issues not disclosed",
+  health_undisclosed: "Health issue not disclosed",
+  wrong_pet: "Different pet than booked",
+  other: "Something else",
+};
+
+export interface PetReport {
+  id: string;
+  bookingId: string;
+  petId: string;
+  category: PetReportCategory;
+  note: string | null;
+  status: PetReportStatus;
+  adminNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+// ---- Service debrief (walker's internal post-service report) ----
+
+export type DebriefPetAsDescribed = "yes" | "mostly" | "no";
+export type DebriefOwnerCommunication = "great" | "fine" | "difficult";
+export type DebriefHandoff = "smooth" | "minor_issues" | "problematic";
+export type DebriefWorkAgain = "yes" | "maybe" | "no";
+
+export interface DebriefInput {
+  overall: number; // 1-5
+  petAsDescribed: DebriefPetAsDescribed;
+  ownerCommunication: DebriefOwnerCommunication;
+  handoff: DebriefHandoff;
+  workAgain: DebriefWorkAgain;
+  note?: string;
+}
+
+/** Admin analytics view of a submitted debrief. */
+export interface AdminDebrief {
+  id: string;
+  bookingId: string;
+  skipped: boolean;
+  overall: number;
+  petAsDescribed: DebriefPetAsDescribed;
+  ownerCommunication: DebriefOwnerCommunication;
+  handoff: DebriefHandoff;
+  workAgain: DebriefWorkAgain;
+  note: string | null;
+  createdAt: string;
+  walkerName: string;
+  ownerName: string;
+  serviceType: BookingServiceType;
+  startAt: string;
+}
+
+export interface DebriefStats {
+  submitted: number;
+  skipped: number;
+  avgOverall: number | null;
+  workAgainYesPct: number | null;
+  petMismatchPct: number | null;
+}
+
+// ---- Cash-commission settlement (walker owes platform for cash bookings) ----
+
+export type SettlementRail = "whish" | "omt" | "bob";
+export type SettlementStatus = "pending" | "confirmed" | "rejected";
+
+export interface Settlement {
+  id: string;
+  walkerId: string;
+  amount: number | string;
+  currency: string;
+  method: SettlementRail;
+  reference: string;
+  destination: string | null;
+  status: SettlementStatus;
+  adminNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface AdminSettlement extends Settlement {
+  walkerName: string;
+}
+
+export interface CashBalance {
+  balances: { currency: string; amount: number }[];
+  threshold: number;
+  blocked: boolean;
+  pendingSettlement: Settlement | null;
+}
+
+/** Admin-queue view of a pet report (joined context). */
+export interface AdminPetReport extends PetReport {
+  petName: string;
+  petSpecies: PetSpecies;
+  petBreed: string | null;
+  petPhotoUrl: string | null;
+  walkerName: string;
+  ownerName: string;
+}
+
 export type PaymentStatus = "none" | "pending" | "held" | "captured" | "refunded" | "failed";
+
+/** Rails a customer can pay with. Card is Stripe; the rest are Lebanon rails + cash. */
+export type PaymentMethod = "card" | "whish" | "omt" | "bob" | "cash";
 
 /** Public payment state for a booking (both parties may read it). */
 export interface PaymentView {
@@ -130,6 +270,25 @@ export interface PaymentView {
   amount: number;
   currency: string;
   refundedAmount: number;
+  /** Chosen rail once a payment exists; null before the customer picks one. */
+  method: PaymentMethod | null;
+  /** Reconciliation reference for a manual rail (null for card/cash). */
+  reference: string | null;
+  /** Destination handle to pay into on a manual rail (null for card/cash). */
+  destination: string | null;
+  /** True once the customer self-reported paying a manual rail. */
+  payerMarkedPaid: boolean;
+  /** Methods on offer while nothing is committed yet. */
+  methods: PaymentMethod[];
+}
+
+/** Backend response after the customer commits to a manual rail or cash. */
+export interface ManualPaymentResult {
+  method: Exclude<PaymentMethod, "card">;
+  reference: string | null;
+  destination: string | null;
+  amount: number;
+  currency: string;
 }
 
 /** What the backend returns to mount Stripe Elements and confirm the hold. */
@@ -146,6 +305,16 @@ export type DisputeReason =
   | "missing_photos"
   | "no_show"
   | "pet_welfare"
+  | "other";
+
+/** Why a walker declined a request (internal — owners never see it verbatim). */
+export type DeclineReason =
+  | "unavailable"
+  | "too_far"
+  | "dog_fit"
+  | "too_many_dogs"
+  | "special_needs"
+  | "uncomfortable"
   | "other";
 
 /** A customer-raised problem with a booking. Null when none has been opened. */
@@ -231,10 +400,17 @@ export interface ReviewInput {
 
 export type FriendlyWithPets = "friendly" | "selective" | "not_friendly";
 export type PetSize = "small" | "medium" | "large";
+export type PetSpecies = "dog" | "cat";
+
+export const SPECIES_LABELS: Record<PetSpecies, string> = {
+  dog: "Dog",
+  cat: "Cat",
+};
 
 export interface Pet {
   id: string;
   name: string;
+  species: PetSpecies;
   breed: string | null;
   ageYears: number | null;
   size: PetSize | null;
@@ -248,6 +424,7 @@ export interface Pet {
 /** Payload for create/update (no id / server fields). */
 export interface PetInput {
   name: string;
+  species: PetSpecies;
   breed?: string | null;
   ageYears?: number | null;
   size?: PetSize | null;
@@ -262,6 +439,12 @@ export const FRIENDLY_LABELS: Record<FriendlyWithPets, string> = {
   selective: "Selective / depends",
   not_friendly: "Prefers to be alone",
 };
+
+/** Species-aware temperament label — "other dogs" only makes sense for dogs. */
+export function friendlyLabel(species: PetSpecies, v: FriendlyWithPets): string {
+  if (v === "friendly" && species === "cat") return "Friendly with other pets";
+  return FRIENDLY_LABELS[v];
+}
 
 export const SIZE_LABELS: Record<PetSize, string> = {
   small: "Small",

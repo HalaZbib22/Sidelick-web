@@ -20,6 +20,7 @@ import { pushRouter } from "./routes/push.js";
 import { adminRouter } from "./routes/admin.js";
 import { paymentsRouter } from "./routes/payments.js";
 import { paymentsWebhookHandler } from "./routes/payments-webhook.js";
+import { uploadsRouter, publicUploadDir } from "./routes/uploads.js";
 
 const app = express();
 
@@ -41,6 +42,9 @@ app.use("/api/auth", authRouter);
 // Auth-gated (401 if no/invalid token)
 app.use("/api/me", requireAuth, meRouter);
 app.use("/api/pets", requireAuth, petsRouter);
+app.use("/api/upload", requireAuth, uploadsRouter);
+// Uploaded images (pet photos) — public static, URLs safe for <img> tags.
+app.use("/uploads", express.static(publicUploadDir, { maxAge: "30d", immutable: true }));
 app.use("/api/walkers", requireAuth, walkersRouter);
 app.use("/api/bookings", requireAuth, bookingsRouter);
 app.use("/api/reviews", requireAuth, reviewsRouter);
@@ -76,3 +80,7 @@ start().catch((err) => {
   console.error("[startup] failed to start:", err);
   process.exit(1);
 });
+
+// smoke-test: verify Claude AI review runs
+
+// retrigger AI review

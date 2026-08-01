@@ -12,7 +12,10 @@ import { WalkCountdown } from "../../../components/bookings/WalkCountdown";
 import { WalkPhotoCapture } from "../../../components/bookings/WalkPhotoCapture";
 import { WalkPhotos } from "../../../components/bookings/WalkPhotos";
 import { BookingReviewSection } from "../../../components/reviews/BookingReviewSection";
+import { PetConfirmCard } from "../../../components/bookings/PetConfirmCard";
+import { ServiceDebriefCard } from "../../../components/bookings/ServiceDebriefCard";
 import { DisputeSection } from "../../../components/bookings/DisputeSection";
+import { DeclineDialog } from "../../../components/bookings/DeclineDialog";
 import { PaymentSection } from "../../../components/payments/PaymentSection";
 import { useBooking, useBookingAction, useWalkPhotoAction } from "../../../hooks/useBookings";
 import { routes } from "../../../lib/paths";
@@ -26,6 +29,24 @@ const time = (dt: string) =>
   new Date(dt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 const durationMins = (a: string, b: string) => Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
 
+// Keep in sync with the backend start-window gate (bookings.ts).
+const START_EARLY_GRACE_MIN = 15;
+const START_LATE_GRACE_MIN = 30;
+
+type StartWindow = { canStart: boolean; hint: string | null };
+function startWindow(startAt: string): StartWindow {
+  const scheduled = new Date(startAt).getTime();
+  const now = Date.now();
+  if (now < scheduled - START_EARLY_GRACE_MIN * 60_000) {
+    const opensAt = new Date(scheduled - START_EARLY_GRACE_MIN * 60_000);
+    return { canStart: false, hint: `You can start at ${time(opensAt.toISOString())}` };
+  }
+  if (now > scheduled + START_LATE_GRACE_MIN * 60_000) {
+    return { canStart: false, hint: "The start window has passed — ask the owner to cancel for a refund." };
+  }
+  return { canStart: true, hint: null };
+}
+
 type Capture = "start" | "mid" | "complete" | null;
 
 function BookingInner() {
@@ -36,8 +57,9 @@ function BookingInner() {
   const midPhoto = useWalkPhotoAction(id, "photo");
   const completeWalk = useWalkPhotoAction(id, "complete");
   const [capture, setCapture] = useState<Capture>(null);
+  const [declining, setDeclining] = useState(false);
 
-  const run = (a: "accept" | "decline" | "cancel", label: string) =>
+  const run = (a: "accept" | "cancel", label: string) =>
     action.mutate(a, { onSuccess: () => toast.success(label), onError: (e) => toast.error(getApiErrorMessage(e)) });
 
   const submitPhoto = (mutation: typeof startWalk, file: File, label: string) =>
@@ -73,7 +95,7 @@ function BookingInner() {
       </Link>
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">
+        <h1 className="font-display text-3xl font-semibold">
           {isWalker ? "Request from" : "Booking with"} {b.counterpartName}
         </h1>
         <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">
@@ -81,7 +103,7 @@ function BookingInner() {
         </span>
       </div>
 
-      <div className="mt-5 space-y-2 rounded-2xl border border-border bg-surface p-4">
+      <div className="mt-5 space-y-2 rounded-2xl border border-border bg-surface p-4 shadow-sm">
         {b.segments.map((s, i) => (
           <div key={i} className="flex justify-between text-sm">
             <span className="capitalize">{s.segmentType}</span>
@@ -91,6 +113,17 @@ function BookingInner() {
         {b.isSharedWalk && <p className="text-xs text-trust-strong">Shared (group) walk</p>}
         {b.dropoffRequired && <p className="text-xs text-muted-foreground">Drop-off at home requested</p>}
       </div>
+
+      {/* Walker-side handoff: confirm the pets match their profiles / report issues. */}
+      {b.role === "walker" &&
+        ["accepted", "in_progress", "completed"].includes(b.status) && (
+          <PetConfirmCard booking={b} />
+        )}
+
+      {/* Walker's internal post-service debrief (admin-only visibility). */}
+      {b.role === "walker" && b.status === "completed" && (
+        <ServiceDebriefCard bookingId={id} ownerName={b.counterpartName} />
+      )}
 
       {b.status === "expired" && b.role === "customer" && (
         <div className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
@@ -116,7 +149,7 @@ function BookingInner() {
       )}
 
       {b.status === "completed" && b.actualStartAt && b.actualEndAt && (
-        <div className="mt-5 rounded-2xl border border-border bg-surface p-4">
+        <div className="mt-5 rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Actual time</span>
             <span className="font-medium">
@@ -147,7 +180,7 @@ function BookingInner() {
       )}
 
       {b.priceBreakdown && (
-        <div className="mt-4 space-y-2 rounded-2xl border border-border bg-surface p-4">
+        <div className="mt-4 space-y-2 rounded-2xl border border-border bg-surface p-4 shadow-sm">
           {b.priceBreakdown.lines.map((l, i) => (
             <div key={i} className={cn("flex justify-between text-sm", l.amount < 0 ? "text-trust-strong" : "text-foreground")}>
               <span>{l.label}</span>
@@ -162,7 +195,7 @@ function BookingInner() {
       )}
 
       {b.specialInstructions && (
-        <div className="mt-4 rounded-2xl border border-border bg-surface p-4">
+        <div className="mt-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
           <p className="text-xs font-medium text-muted-foreground">Notes</p>
           <p className="mt-1 text-sm">{b.specialInstructions}</p>
         </div>
@@ -174,12 +207,18 @@ function BookingInner() {
         {isWalker && b.status === "requested" && (
           <>
             <Button onClick={() => run("accept", "Booking accepted")} loading={pending}>Accept</Button>
-            <Button variant="outline" onClick={() => run("decline", "Booking declined")} disabled={pending}>Decline</Button>
+            <Button variant="outline" onClick={() => setDeclining(true)} disabled={pending}>Decline</Button>
           </>
         )}
-        {isWalker && b.status === "accepted" && (
-          <Button onClick={() => setCapture("start")} disabled={pending}>Start walk</Button>
-        )}
+        {isWalker && b.status === "accepted" && (() => {
+          const win = startWindow(b.startAt);
+          return (
+            <div className="flex flex-col gap-1">
+              <Button onClick={() => setCapture("start")} disabled={pending || !win.canStart}>Start walk</Button>
+              {win.hint && <span className="text-xs text-muted-foreground">{win.hint}</span>}
+            </div>
+          );
+        })()}
         {isWalker && b.status === "in_progress" && (
           <>
             <Button onClick={() => setCapture("complete")} disabled={pending}>Mark complete</Button>
@@ -223,12 +262,18 @@ function BookingInner() {
       )}
 
       {b.status === "completed" && b.role === "customer" && (
-        <BookingReviewSection bookingId={id} walkerName={b.counterpartName} />
+        <BookingReviewSection
+          bookingId={id}
+          walkerName={b.counterpartName}
+          walkerId={b.walkerId}
+        />
       )}
 
       {b.role === "customer" && (b.status === "in_progress" || b.status === "completed") && (
         <DisputeSection bookingId={id} />
       )}
+
+      <DeclineDialog bookingId={id} open={declining} onClose={() => setDeclining(false)} />
     </main>
   );
 }

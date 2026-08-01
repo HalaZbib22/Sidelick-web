@@ -19,7 +19,8 @@ import { apiFetch } from "../../../../lib/api";
 import { api, routes } from "../../../../lib/paths";
 import { getApiErrorMessage } from "../../../../lib/forms";
 import { cn } from "../../../../lib/utils";
-import type { WalkerProfile, BookingServiceType, Quote } from "../../../../lib/types";
+import { SERVICES } from "../../../../lib/services";
+import type { Pet, WalkerProfile, ServiceType, Quote } from "../../../../lib/types";
 
 const money = (cur: string, n: number) => (cur === "USD" ? `$${n.toFixed(2)}` : `${n.toFixed(2)} ${cur}`);
 const TOTAL = 3;
@@ -50,15 +51,21 @@ function BookInner() {
   const [quote, setQuote] = useState<Quote | null>(null);
 
   const offers = walker?.serviceTypes ?? [];
-  const serviceOptions: { value: BookingServiceType; label: string }[] = [];
-  if (offers.includes("walk")) serviceOptions.push({ value: "walk", label: "Walk" });
-  if (offers.includes("sit")) serviceOptions.push({ value: "sit", label: "Sit" });
-  if (offers.includes("walk") && offers.includes("sit")) serviceOptions.push({ value: "walk_sit", label: "Walk & Sit" });
+  const serviceOptions = SERVICES.filter((s) => offers.includes(s.value));
 
-  const [serviceType, setServiceType] = useState<BookingServiceType>("walk");
+  const [serviceType, setServiceType] = useState<ServiceType>("walk");
+  // Default to the first service this walker actually offers.
+  useEffect(() => {
+    if (offers.length > 0 && !offers.includes(serviceType)) {
+      setServiceType(offers[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offers.join(",")]);
   const [start, setStart] = useState<Date>(earliestStart);
   const [walkMinutes, setWalkMinutes] = useState(60);
-  const [sitHours, setSitHours] = useState(4);
+  const [daycareDays, setDaycareDays] = useState(1);
+  const [boardingNights, setBoardingNights] = useState(1);
+  const [dropInMinutes, setDropInMinutes] = useState(30);
   const [petIds, setPetIds] = useState<string[]>([]);
   // Pre-select the customer's dog when they only have one — saves a click and
   // avoids the "Pick at least one dog" stumble in the common single-pet case.
@@ -86,10 +93,32 @@ function BookInner() {
     setStep(2);
   }
 
-  const hasWalk = serviceType === "walk" || serviceType === "walk_sit";
-  const hasSit = serviceType === "sit" || serviceType === "walk_sit";
+  const hasWalk = serviceType === "walk";
+  // Services hosted at the walker's home can offer food handling + drop-off home.
+  const atWalkerHome = serviceType === "daycare" || serviceType === "boarding";
   const selectedPets = (pets ?? []).filter((p) => petIds.includes(p.id));
   const shareEligible = hasWalk && selectedPets.length > 0 && selectedPets.every((p) => p.friendlyWithPets === "friendly");
+
+  // Species rules (mirrored server-side): walks are dogs-only, and every pet
+  // must be a species this walker cares for.
+  const acceptedSpecies = walker?.acceptedSpecies ?? ["dog"];
+  function petBlockReason(p: Pet): string | null {
+    if (!acceptedSpecies.includes(p.species)) {
+      return p.species === "cat" ? "This walker doesn't care for cats" : "This walker doesn't care for dogs";
+    }
+    if (p.species === "cat" && hasWalk) return "Walks are dogs-only — pick another service";
+    return null;
+  }
+  // Deselect pets that became incompatible (e.g. after switching Sit → Walk).
+  useEffect(() => {
+    setPetIds((ids) =>
+      ids.filter((pid) => {
+        const p = (pets ?? []).find((x) => x.id === pid);
+        return p ? petBlockReason(p) === null : false;
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceType, walker?.acceptedSpecies]);
 
   function body() {
     return {
@@ -98,11 +127,13 @@ function BookInner() {
       date: dayISO(start),
       startTime: hhmm(start),
       walkDurationMinutes: hasWalk ? walkMinutes : undefined,
-      sitDurationHours: hasSit ? sitHours : undefined,
+      daycareDays: serviceType === "daycare" ? daycareDays : undefined,
+      boardingNights: serviceType === "boarding" ? boardingNights : undefined,
+      dropInMinutes: serviceType === "drop_in" ? dropInMinutes : undefined,
       petIds,
-      foodDays: hasSit ? foodDays : undefined,
+      foodDays: serviceType === "boarding" ? foodDays : undefined,
       isSharedWalk: shareEligible ? isSharedWalk : undefined,
-      dropoff: hasSit ? dropoff : undefined,
+      dropoff: atWalkerHome ? dropoff : undefined,
       notes: notes || undefined,
       recurrence: isRecurring
         ? { frequency: repeat, interval: repeatInterval, count: repeatCount }
@@ -111,7 +142,7 @@ function BookInner() {
   }
 
   async function goReview() {
-    if (petIds.length === 0) return toast.error("Pick at least one dog.");
+    if (petIds.length === 0) return toast.error("Pick at least one pet.");
     setBusy(true);
     try {
       const d = await apiFetch<{ quote: Quote }>(api.bookingQuote, { method: "POST", body: JSON.stringify(body()) });
@@ -168,9 +199,34 @@ function BookInner() {
 
       {step === 1 && (
         <div className="space-y-4">
-          <PillGroup label="Service" options={serviceOptions} value={serviceType} onChange={setServiceType} />
+          {/* Service picker — icon cards, one per offered service. */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Starts</label>
+            <p className="mb-1.5 text-sm font-medium">Service</p>
+            <div className="grid grid-cols-2 gap-2">
+              {serviceOptions.map(({ value, short, blurb, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setServiceType(value)}
+                  aria-pressed={serviceType === value}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors",
+                    serviceType === value
+                      ? "border-primary bg-accent-subtle/60 shadow-sm"
+                      : "border-border bg-surface hover:bg-muted/40"
+                  )}
+                >
+                  <Icon className={cn("h-4 w-4", serviceType === value ? "text-primary" : "text-muted-foreground")} />
+                  <span className="text-sm font-medium">{short}</span>
+                  <span className="text-[11px] leading-tight text-muted-foreground">{blurb}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              {atWalkerHome ? "Drop-off time" : "Starts"}
+            </label>
             <DateTimePicker
               value={start}
               onChange={setStart}
@@ -195,7 +251,34 @@ function BookInner() {
               onChange={(v) => setWalkMinutes(Number(v))}
             />
           )}
-          {hasSit && <NumberStepper label="Sitting hours" value={sitHours} onChange={setSitHours} min={1} max={12} />}
+          {serviceType === "drop_in" && (
+            <PillGroup
+              label="Visit length"
+              options={[
+                { value: "30", label: "30 min" },
+                { value: "60", label: "1 hr" },
+              ]}
+              value={String(dropInMinutes)}
+              onChange={(v) => setDropInMinutes(Number(v))}
+            />
+          )}
+          {serviceType === "daycare" && (
+            <div>
+              <NumberStepper label="Days of daycare" value={daycareDays} onChange={setDaycareDays} min={1} max={7} />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Same drop-off time each day · pick-up ~10 hours later.
+              </p>
+            </div>
+          )}
+          {serviceType === "boarding" && (
+            <div>
+              <NumberStepper label="Nights" value={boardingNights} onChange={setBoardingNights} min={1} max={30} />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Overnights at {walker.firstName}&apos;s home · pick-up{" "}
+                {boardingNights === 1 ? "the next day" : `${boardingNights} days later`} around drop-off time.
+              </p>
+            </div>
+          )}
 
           <PillGroup
             label="Repeat"
@@ -240,23 +323,28 @@ function BookInner() {
       {step === 2 && (
         <div className="space-y-4">
           <div>
-            <p className="mb-2 text-sm font-medium">Which dog?</p>
+            <p className="mb-2 text-sm font-medium">Which pet?</p>
             <div className="space-y-2">
               {(pets ?? []).map((p) => {
                 const on = petIds.includes(p.id);
+                const blocked = petBlockReason(p);
                 return (
                   <button
                     key={p.id}
                     type="button"
+                    disabled={blocked !== null}
                     onClick={() => setPetIds((ids) => (on ? ids.filter((x) => x !== p.id) : [...ids, p.id]))}
                     className={cn(
                       "flex w-full items-center justify-between rounded-xl bg-surface p-3 text-left transition",
-                      on ? "border-2 border-primary" : "border border-border hover:bg-muted/40"
+                      on ? "border-2 border-primary" : "border border-border hover:bg-muted/40",
+                      blocked !== null && "opacity-50 hover:bg-surface"
                     )}
                   >
                     <span>
                       <span className="block text-sm font-medium">{p.name}</span>
-                      <span className="block text-xs text-muted-foreground">{p.breed ?? "Dog"}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {blocked ?? p.breed ?? (p.species === "cat" ? "Cat" : "Dog")}
+                      </span>
                     </span>
                     {on && <Check className="h-4 w-4 text-primary" />}
                   </button>
@@ -278,14 +366,14 @@ function BookInner() {
             </div>
           )}
 
-          {hasSit && (
-            <>
-              <NumberStepper label="Food handling (days)" value={foodDays} onChange={setFoodDays} min={0} max={14} />
-              <div className="flex items-center justify-between rounded-xl border border-border bg-surface p-3">
-                <span className="text-sm font-medium">Drop my dog home after</span>
-                <Switch checked={dropoff} onChange={setDropoff} ariaLabel="Drop-off" />
-              </div>
-            </>
+          {serviceType === "boarding" && (
+            <NumberStepper label="Food handling (days)" value={foodDays} onChange={setFoodDays} min={0} max={30} />
+          )}
+          {atWalkerHome && (
+            <div className="flex items-center justify-between rounded-xl border border-border bg-surface p-3">
+              <span className="text-sm font-medium">Bring my pet home after</span>
+              <Switch checked={dropoff} onChange={setDropoff} ariaLabel="Drop-off" />
+            </div>
           )}
 
           <TextareaField

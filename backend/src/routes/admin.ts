@@ -5,6 +5,13 @@ import { z } from "zod";
 import { ok, notFoundError, unprocessable, conflict } from "../lib/response.js";
 import { query } from "../lib/db.js";
 import { listDisputes, resolveDispute } from "../lib/disputes.js";
+import { listPetReports, reviewPetReport } from "../lib/petReports.js";
+import {
+  listSettlements,
+  confirmSettlement,
+  rejectSettlement,
+} from "../lib/payments/settlements.js";
+import { confirmManualReceipt } from "../lib/payments/service.js";
 import { notify } from "../lib/realtime.js";
 
 // Mounted behind requireAuth + requireRole("admin").
@@ -79,6 +86,132 @@ adminRouter.get("/disputes", async (req, res) => {
   return ok(res, { disputes });
 });
 
+// ---- Service debriefs (walker post-service reports; internal analytics) ----
+
+// GET /api/admin/debriefs — recent debriefs + aggregate stats.
+adminRouter.get("/debriefs", async (_req, res) => {
+  const stats = await query<{
+    submitted: number;
+    skipped: number;
+    avgOverall: number | null;
+    workAgainYesPct: number | null;
+    petMismatchPct: number | null;
+  }>(
+    `SELECT COUNT(*) FILTER (WHERE NOT skipped)::int                       AS "submitted",
+            COUNT(*) FILTER (WHERE skipped)::int                           AS "skipped",
+            ROUND(AVG(overall) FILTER (WHERE NOT skipped), 2)::float       AS "avgOverall",
+            ROUND(100.0 * COUNT(*) FILTER (WHERE work_again = 'yes')
+              / NULLIF(COUNT(*) FILTER (WHERE NOT skipped), 0), 0)::float  AS "workAgainYesPct",
+            ROUND(100.0 * COUNT(*) FILTER (WHERE pet_as_described <> 'yes' AND NOT skipped)
+              / NULLIF(COUNT(*) FILTER (WHERE NOT skipped), 0), 0)::float  AS "petMismatchPct"
+       FROM service_debriefs`
+  );
+  const debriefs = await query(
+    `SELECT sd.id, sd.booking_id AS "bookingId", sd.skipped, sd.overall,
+            sd.pet_as_described AS "petAsDescribed",
+            sd.owner_communication AS "ownerCommunication",
+            sd.handoff, sd.work_again AS "workAgain", sd.note,
+            sd.created_at AS "createdAt",
+            w.first_name || ' ' || left(w.last_name, 1) || '.' AS "walkerName",
+            o.first_name || ' ' || left(o.last_name, 1) || '.' AS "ownerName",
+            b.service_type AS "serviceType", b.start_at AS "startAt"
+       FROM service_debriefs sd
+       JOIN users w    ON w.id = sd.walker_id
+       JOIN bookings b ON b.id = sd.booking_id
+       JOIN users o    ON o.id = b.customer_id
+      WHERE NOT sd.skipped
+      ORDER BY sd.created_at DESC
+      LIMIT 100`
+  );
+  return ok(res, { stats: stats.rows[0], debriefs: debriefs.rows });
+});
+
+// ---- Commission settlements (walker pays cash-commission debt) ----
+
+// GET /api/admin/settlements?status=pending|confirmed|rejected
+adminRouter.get("/settlements", async (req, res) => {
+  const settlements = await listSettlements(req.query.status as string | undefined);
+  return ok(res, { settlements });
+});
+
+const settlementActionSchema = z.object({
+  action: z.enum(["confirm", "reject"]),
+  note: z.string().max(1000).optional(),
+});
+
+// POST /api/admin/settlements/:id/review — money arrived (confirm) or not (reject).
+adminRouter.post("/settlements/:id/review", async (req, res) => {
+  const parsed = settlementActionSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Choose an action.", parsed.error.flatten());
+  }
+  const result =
+    parsed.data.action === "confirm"
+      ? await confirmSettlement(req.params.id)
+      : await rejectSettlement(req.params.id, parsed.data.note?.trim() || undefined);
+  if (!result.ok) {
+    if (result.code === "notfound") return notFoundError(res, result.message);
+    return conflict(res, result.message);
+  }
+  await notify({
+    userId: result.settlement.walkerId,
+    type: "payment_received",
+    title:
+      parsed.data.action === "confirm"
+        ? "Settlement received ✔"
+        : "Settlement not confirmed",
+    body:
+      parsed.data.action === "confirm"
+        ? "Thanks — your cash-commission balance is cleared. You're all set."
+        : "We couldn't confirm your settlement payment. Check the reference and try again, or contact support.",
+  });
+  return ok(res, { settlement: result.settlement }, "Settlement updated");
+});
+
+// ---- Pet reports (walker-filed pet-profile issues) ----
+
+// GET /api/admin/pet-reports?status=open|reviewed|dismissed
+adminRouter.get("/pet-reports", async (req, res) => {
+  const reports = await listPetReports(req.query.status as string | undefined);
+  return ok(res, { reports });
+});
+
+const reviewReportSchema = z.object({
+  action: z.enum(["reviewed", "dismissed"]),
+  note: z.string().max(1000).optional(),
+});
+
+// POST /api/admin/pet-reports/:id/review — mark founded (reviewed) or dismissed.
+adminRouter.post("/pet-reports/:id/review", async (req, res) => {
+  const parsed = reviewReportSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return unprocessable(res, "Choose an action for this report.", parsed.error.flatten());
+  }
+  const result = await reviewPetReport(
+    req.params.id,
+    parsed.data.action,
+    parsed.data.note?.trim() || undefined
+  );
+  if (!result.ok) {
+    if (result.code === "notfound") return notFoundError(res, result.message);
+    return conflict(res, result.message);
+  }
+  // Close the loop with the reporting walker.
+  await notify({
+    userId: result.report.reporterId,
+    type: "pet_report_reviewed",
+    title:
+      parsed.data.action === "reviewed"
+        ? "Your pet report was reviewed ✔"
+        : "Your pet report was closed",
+    body:
+      parsed.data.action === "reviewed"
+        ? `Thanks for flagging ${result.report.petName}'s profile — we've taken it from here.`
+        : `We looked into your report about ${result.report.petName} and closed it.`,
+  });
+  return ok(res, { report: result.report }, "Report updated");
+});
+
 // PATCH /api/admin/disputes/:id/resolve — decide a dispute (refund / deny).
 const resolveSchema = z.object({
   resolution: z.enum(["refund_full", "refund_partial", "denied"]),
@@ -128,4 +261,53 @@ adminRouter.patch("/disputes/:id/resolve", async (req, res) => {
   });
 
   return ok(res, { dispute: result.dispute }, "Dispute resolved");
+});
+
+// GET /api/admin/payments/pending — manual-rail payments the customer says they've
+// sent (payer_marked_paid_at set) but that an admin hasn't confirmed received yet.
+adminRouter.get("/payments/pending", async (_req, res) => {
+  const r = await query(
+    `SELECT p.booking_id     AS "bookingId",
+            p.provider,
+            p.amount,
+            p.currency,
+            p.provider_ref   AS "reference",
+            p.payer_marked_paid_at AS "markedPaidAt",
+            cu.first_name || ' ' || cu.last_name AS "customerName",
+            wu.first_name || ' ' || wu.last_name AS "walkerName"
+       FROM payments p
+       JOIN bookings b ON b.id = p.booking_id
+       JOIN users cu ON cu.id = b.customer_id
+       JOIN users wu ON wu.id = b.walker_id
+      WHERE p.method IN ('cash_in', 'transfer')
+        AND p.status = 'pending'
+        AND p.payer_marked_paid_at IS NOT NULL
+      ORDER BY p.payer_marked_paid_at ASC
+      LIMIT 200`
+  );
+  return ok(res, { payments: r.rows });
+});
+
+// POST /api/admin/payments/:bookingId/confirm — admin confirms receipt of a manual
+// payment (Whish / OMT / BOB): flips the payment pending → held so the walk can run.
+adminRouter.post("/payments/:bookingId/confirm", async (req, res) => {
+  const result = await confirmManualReceipt(req.params.bookingId);
+  if (!result.ok) {
+    if (result.code === "notfound") return notFoundError(res, result.message);
+    return conflict(res, result.message);
+  }
+  const r = await query<{ customer_id: string }>(
+    "SELECT customer_id FROM bookings WHERE id = $1",
+    [req.params.bookingId]
+  );
+  if (r.rows[0]) {
+    await notify({
+      userId: r.rows[0].customer_id,
+      type: "payment_received",
+      title: "Payment confirmed",
+      body: "We've confirmed your payment — your booking is secured.",
+      bookingId: req.params.bookingId,
+    });
+  }
+  return ok(res, { confirmed: true }, "Payment confirmed");
 });

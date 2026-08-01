@@ -15,15 +15,32 @@ export interface Session {
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  // Persistent ("remember me") tokens live in localStorage; session-only
+  // tokens live in sessionStorage and vanish when the browser closes.
+  return (
+    window.localStorage.getItem(TOKEN_KEY) ??
+    window.sessionStorage.getItem(TOKEN_KEY)
+  );
 }
 
-export function setToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
+/**
+ * Store the auth token. `remember = true` (default) persists across browser
+ * restarts via localStorage; `false` keeps it session-only via sessionStorage.
+ * Either way we clear the other store so a single source of truth remains.
+ */
+export function setToken(token: string, remember = true): void {
+  if (remember) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+    window.sessionStorage.removeItem(TOKEN_KEY);
+  } else {
+    window.sessionStorage.setItem(TOKEN_KEY, token);
+    window.localStorage.removeItem(TOKEN_KEY);
+  }
 }
 
 export function clearToken(): void {
   window.localStorage.removeItem(TOKEN_KEY);
+  window.sessionStorage.removeItem(TOKEN_KEY);
 }
 
 /** Decode the JWT payload (no verification — display only). */
