@@ -51,7 +51,7 @@ export default function SignInPage() {
       );
       signIn(user);
       toast.success("Signed in successfully!");
-      router.push(routes.dashboard);
+      router.push(user.role === "admin" ? routes.admin : routes.dashboard);
     },
   });
 
