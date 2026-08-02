@@ -9,7 +9,7 @@ import {
   SESSION_HINT_KEY,
   type Session,
 } from "../lib/auth";
-import { apiFetch } from "../lib/api";
+import { apiFetch, ApiError } from "../lib/api";
 import { api } from "../lib/paths";
 
 interface AuthContextType {
@@ -44,10 +44,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const fresh: Session = { userId: d.user.id, role: d.user.role };
         storeSession(fresh);
         setSession(fresh);
-      } catch {
+      } catch (e) {
         if (cancelled) return;
-        clearStoredSession();
-        setSession(null);
+        // Only a definitive auth rejection signs the user out. A 5xx or
+        // network failure means the SERVER is unhappy — keep the session
+        // rather than kicking a valid user to /signin.
+        if (e instanceof ApiError && (e.statusCode === 401 || e.statusCode === 403)) {
+          clearStoredSession();
+          setSession(null);
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
