@@ -8,16 +8,20 @@
 const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const wsOrigin = apiOrigin.replace(/^http/, "ws");
 
+// Dev-only relaxations: Next's hot-reload runtime needs eval + a same-origin
+// websocket. Production stays strict (no eval anywhere).
+const isDev = process.env.NODE_ENV === "development";
+
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
       "style-src 'self' 'unsafe-inline'",
       `img-src 'self' data: blob: ${apiOrigin}`,
       "font-src 'self' data:",
-      `connect-src 'self' ${apiOrigin} ${wsOrigin}`,
+      `connect-src 'self' ${apiOrigin} ${wsOrigin}${isDev ? " ws://localhost:3000" : ""}`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
