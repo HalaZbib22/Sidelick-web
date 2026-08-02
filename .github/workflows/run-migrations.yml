@@ -1,0 +1,41 @@
+# Apply database migrations to the production server, manually from the
+# Actions tab. Runs the given migration files in order via the same SSH
+# secrets deploys use. All listed migrations are idempotent (IF NOT EXISTS /
+# ON CONFLICT guards), so re-running is safe.
+name: Run database migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: "Migration files to apply, in order (space-separated)"
+        required: true
+        default: "0016_favorites.sql 0017_walker_amenities.sql 0018_multi_species.sql 0019_pet_confirmation_reports.sql 0020_service_debriefs.sql 0021_service_catalog.sql 0022_cash_settlements.sql 0023_password_changed_at.sql"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy migration files to server
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} -r db/migrations ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/migrations
+
+      - name: Apply migrations
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd /opt/sidelick
+            for f in ${{ inputs.files }}; do
+              echo "=== Applying $f ==="
+              docker exec -i sidelick-postgres psql -U sidelick -d sidelick -v ON_ERROR_STOP=1 < "migrations/$f"
+            done
+            echo "All migrations applied."

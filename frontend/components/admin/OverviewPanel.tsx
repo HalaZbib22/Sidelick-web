@@ -73,11 +73,20 @@ function Tile({
 
 /** The daily numbers, with attention-needing queues surfaced first. */
 export function OverviewPanel({ goTo }: { goTo: (tab: string) => void }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["admin", "overview"],
     queryFn: async () => (await apiFetch<{ overview: Overview }>(api.adminOverview)).overview,
     refetchInterval: 60_000,
   });
+
+  if (isError) {
+    return (
+      <div className="rounded-2xl border border-danger/30 bg-danger/5 p-6 text-sm">
+        Couldn&apos;t load the overview — the API returned an error. If this persists,
+        the server may be missing a database migration.
+      </div>
+    );
+  }
 
   if (isLoading || !data) {
     return (
