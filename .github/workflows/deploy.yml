@@ -1,10 +1,12 @@
 name: Deploy to Server via SSH
 
+# Deploys ONLY from main — there is a single production server, so deploying
+# from two branches meant "last push wins" even when it was older code.
+# Release flow: merge feature PRs into develop, then merge develop → main to ship.
 on:
   push:
     branches:
       - main
-      - develop
   workflow_dispatch:
     inputs:
       no_cache:
