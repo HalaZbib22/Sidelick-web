@@ -13,7 +13,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Protected } from "../../components/auth/Protected";
-import { Logo } from "../../components/brand/Logo";
 import { OverviewPanel } from "../../components/admin/OverviewPanel";
 import { VerificationQueue } from "../../components/admin/VerificationQueue";
 import { PaymentQueue } from "../../components/admin/PaymentQueue";
@@ -92,10 +91,9 @@ function AdminInner() {
         aria-label="Admin sections"
         className="flex shrink-0 gap-1 overflow-x-auto md:w-52 md:flex-col md:overflow-visible"
       >
-        <div className="mb-2 hidden px-3 md:block">
-          <Logo className="text-lg" />
-          <p className="mt-0.5 text-xs text-muted-foreground">Admin portal</p>
-        </div>
+        <p className="mb-2 hidden px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground md:block">
+          Admin portal
+        </p>
         {SECTIONS.map(({ key, label, icon: Icon }) => {
           const count = badge(key);
           const active = tab === key;
