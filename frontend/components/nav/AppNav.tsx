@@ -9,6 +9,7 @@ import { useMe } from "../../hooks/useMe";
 import { routes } from "../../lib/paths";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import { NotificationBell } from "./NotificationBell";
+import { Logo } from "../brand/Logo";
 import { cn } from "../../lib/utils";
 
 const HIDDEN = new Set(["/", "/signin", "/signup", "/forgot-password", "/reset-password"]);
@@ -52,8 +53,8 @@ export function AppNav() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <Link href={routes.dashboard} className="text-lg font-medium text-primary">
-          Sidelick
+        <Link href={routes.dashboard}>
+          <Logo className="text-lg" />
         </Link>
 
         <nav className="hidden items-center gap-1 sm:flex">
