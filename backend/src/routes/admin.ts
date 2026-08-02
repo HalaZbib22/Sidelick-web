@@ -86,6 +86,79 @@ adminRouter.get("/disputes", async (req, res) => {
   return ok(res, { disputes });
 });
 
+// ---- Portal overview (the numbers an admin checks daily) ----
+
+// GET /api/admin/overview — aggregate stats for the dashboard landing.
+adminRouter.get("/overview", async (_req, res) => {
+  const [users, bookings, revenue, cashDebt, queues, reviews] = await Promise.all([
+    query(
+      `SELECT COUNT(*) FILTER (WHERE role = 'user')::int   AS "owners",
+              COUNT(*) FILTER (WHERE role = 'walker')::int AS "walkers",
+              COUNT(*) FILTER (WHERE role = 'walker' AND verification_status = 'verified')::int AS "verifiedWalkers",
+              COUNT(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS "newThisWeek"
+         FROM users`
+    ),
+    query(
+      `SELECT COUNT(*)::int AS "total",
+              COUNT(*) FILTER (WHERE status = 'requested')::int AS "requested",
+              COUNT(*) FILTER (WHERE status IN ('accepted','in_progress'))::int AS "active",
+              COUNT(*) FILTER (WHERE status = 'completed')::int AS "completed",
+              COUNT(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS "newThisWeek"
+         FROM bookings`
+    ),
+    query(
+      `SELECT currency,
+              COALESCE(SUM(amount), 0)::float              AS "volume",
+              COALESCE(SUM(platform_commission), 0)::float AS "commission"
+         FROM payments
+        WHERE status = 'captured' AND captured_at >= date_trunc('month', now())
+        GROUP BY currency ORDER BY currency`
+    ),
+    query(
+      `SELECT currency, SUM(amount)::float AS "amount"
+         FROM walker_ledger GROUP BY currency HAVING SUM(amount) > 0`
+    ),
+    query(
+      `SELECT
+         (SELECT COUNT(*) FROM users WHERE role = 'walker' AND verification_status = 'pending')::int AS "pendingVerifications",
+         (SELECT COUNT(*) FROM disputes WHERE status = 'open')::int AS "openDisputes",
+         (SELECT COUNT(*) FROM pet_reports WHERE status = 'open')::int AS "openPetReports",
+         (SELECT COUNT(*) FROM commission_settlements WHERE status = 'pending')::int AS "pendingSettlements",
+         (SELECT COUNT(*) FROM payments WHERE method IN ('cash_in','transfer') AND status = 'pending' AND payer_marked_paid_at IS NOT NULL)::int AS "pendingPayments"`
+    ),
+    query(
+      `SELECT ROUND(AVG(rating), 2)::float AS "avgRating", COUNT(*)::int AS "count" FROM reviews`
+    ),
+  ]);
+  return ok(res, {
+    overview: {
+      users: users.rows[0],
+      bookings: bookings.rows[0],
+      revenueThisMonth: revenue.rows,
+      outstandingCashDebt: cashDebt.rows,
+      queues: queues.rows[0],
+      reviews: reviews.rows[0],
+    },
+  });
+});
+
+// GET /api/admin/reviews — recent customer reviews with context.
+adminRouter.get("/reviews", async (_req, res) => {
+  const r = await query(
+    `SELECT r.id, r.rating, r.comment, r.created_at AS "createdAt",
+            rv.first_name || ' ' || left(rv.last_name, 1) || '.' AS "reviewerName",
+            re.first_name || ' ' || left(re.last_name, 1) || '.' AS "walkerName",
+            b.service_type AS "serviceType"
+       FROM reviews r
+       JOIN users rv    ON rv.id = r.reviewer_id
+       JOIN users re    ON re.id = r.reviewee_id
+       JOIN bookings b  ON b.id = r.booking_id
+      ORDER BY r.created_at DESC
+      LIMIT 100`
+  );
+  return ok(res, { reviews: r.rows });
+});
+
 // ---- Service debriefs (walker post-service reports; internal analytics) ----
 
 // GET /api/admin/debriefs — recent debriefs + aggregate stats.

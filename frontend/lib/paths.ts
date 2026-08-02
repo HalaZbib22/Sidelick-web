@@ -56,6 +56,8 @@ export const api = {
   adminPendingPayments: `${base}/api/admin/payments/pending`,
   adminPetReports: `${base}/api/admin/pet-reports`,
   adminDebriefs: `${base}/api/admin/debriefs`,
+  adminOverview: `${base}/api/admin/overview`,
+  adminReviews: `${base}/api/admin/reviews`,
   adminSettlements: `${base}/api/admin/settlements`,
   adminReviewSettlement: (id: string) => `${base}/api/admin/settlements/${id}/review`,
   adminReviewPetReport: (id: string) => `${base}/api/admin/pet-reports/${id}/review`,
