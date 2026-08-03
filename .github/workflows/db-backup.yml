@@ -1,0 +1,67 @@
+# Nightly database backup — the off-server copy that survives a dead disk.
+#
+# What it does, every night (and on demand):
+#   1. pg_dump (custom format) inside the postgres container
+#   2. keeps a rotated plain copy on the server (/opt/sidelick/backups, last 7)
+#   3. pulls the dump to the runner, VERIFIES it with pg_restore --list,
+#      encrypts it (AES-256, key = BACKUP_ENCRYPTION_KEY secret), and uploads
+#      it as a workflow artifact (30-day retention)
+#
+# The artifact is encrypted because this repo is public and artifacts are
+# downloadable — never upload an unencrypted dump.
+# Restore procedure: docs/runbooks/backup-restore.md
+name: Database backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # nightly 02:00 UTC (05:00 Beirut)
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump + rotate on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            mkdir -p /opt/sidelick/backups
+            STAMP=$(date -u +%Y%m%d-%H%M%S)
+            docker exec sidelick-postgres pg_dump -U sidelick -d sidelick -Fc > "/opt/sidelick/backups/sidelick-$STAMP.dump"
+            test -s "/opt/sidelick/backups/sidelick-$STAMP.dump"
+            ln -sf "sidelick-$STAMP.dump" /opt/sidelick/backups/latest.dump
+            ls -1t /opt/sidelick/backups/sidelick-*.dump | tail -n +8 | xargs -r rm --
+            echo "Server-side backup: sidelick-$STAMP.dump ($(du -h /opt/sidelick/backups/sidelick-$STAMP.dump | cut -f1))"
+
+      - name: Fetch dump to runner
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass postgresql-client
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -o StrictHostKeyChecking=no -P ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/opt/sidelick/backups/latest.dump ./sidelick.dump
+          test -s ./sidelick.dump
+
+      - name: Verify dump integrity
+        run: |
+          pg_restore --list ./sidelick.dump > /dev/null
+          echo "Dump verified: $(pg_restore --list ./sidelick.dump | wc -l) objects"
+
+      - name: Encrypt (repo is public — artifacts must never be plaintext)
+        env:
+          BACKUP_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          test -n "$BACKUP_KEY" || { echo "FATAL: BACKUP_ENCRYPTION_KEY secret not set"; exit 1; }
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -in ./sidelick.dump -out ./sidelick.dump.enc -pass env:BACKUP_KEY
+          rm ./sidelick.dump
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: sidelick.dump.enc
+          retention-days: 30
+          if-no-files-found: error
