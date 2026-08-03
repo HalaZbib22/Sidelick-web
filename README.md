@@ -6,6 +6,8 @@ Sidelick lets pet owners find trusted, ID-verified walkers nearby, book a walk o
 
 > **Tech:** Next.js 14 (App Router) PWA · Express + TypeScript · PostgreSQL · Socket.IO · Web Push
 
+> **Contributing?** All work follows the [engineering standards](docs/standards/README.md) — branch workflow, design language, security rules, and the quality bar every PR is measured against.
+
 ---
 
 ## Features
